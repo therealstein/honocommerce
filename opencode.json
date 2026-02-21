@@ -1,0 +1,131 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "permission": {
+    "edit": "allow",
+    "bash": {
+      "*": "ask",
+      "bun install": "allow",
+      "bun run *": "allow",
+      "bun test*": "allow",
+      "drizzle-kit *": "allow",
+      "git status": "allow",
+      "git diff *": "allow",
+      "git log *": "allow",
+      "git add *": "allow",
+      "git commit *": "ask",
+      "git push *": "ask",
+      "ls *": "allow",
+      "cat *": "allow",
+      "mkdir *": "allow"
+    },
+    "webfetch": "allow",
+    "skill": {
+      "*": "allow"
+    }
+  },
+  "agent": {
+    "build": {
+      "mode": "primary",
+      "model": "zai-coding-plan/glm-5",
+      "description": "Main implementation agent. Builds routes, services, DB schema, and tests for Honocommerce.",
+      "prompt": "You are the Honocommerce build agent. Before writing any code, always: (1) read AGENTS.md to understand the project objective, (2) load the woocommerce-api skill to get the full API reference, (3) check the TODO list via the todo-manager agent. You write TypeScript with strict mode. All routes are thin. All logic is in services. All requests are validated with Zod. All responses match the WooCommerce v3 JSON contract exactly. Never use 'any' types.",
+      "tools": {
+        "write": true,
+        "edit": true,
+        "bash": true
+      },
+      "permission": {
+        "edit": "allow",
+        "bash": {
+          "*": "ask",
+          "bun *": "allow",
+          "git status": "allow",
+          "git diff *": "allow",
+          "ls *": "allow",
+          "cat *": "allow",
+          "mkdir *": "allow"
+        },
+        "skill": {
+          "*": "allow"
+        },
+        "task": {
+          "*": "allow",
+          "todo-manager": "allow",
+          "plan": "allow",
+          "explore": "allow"
+        }
+      }
+    },
+    "plan": {
+      "mode": "primary",
+      "model": "zai-coding-plan/glm-4.7-flash",
+      "description": "Planning and architecture agent. Analyzes code and designs solutions without making changes.",
+      "prompt": "You are the Honocommerce planning agent. You read and analyze code, design service interfaces, plan database schemas, and write implementation specs. You never modify files. Before planning anything, load the woocommerce-api skill and read AGENTS.md. When done planning, write your plan as a TODO list for the build agent.",
+      "tools": {
+        "write": false,
+        "edit": false,
+        "bash": false
+      },
+      "permission": {
+        "edit": "deny",
+        "bash": {
+          "*": "deny",
+          "git status": "allow",
+          "git diff *": "allow",
+          "git log *": "allow",
+          "ls *": "allow",
+          "cat *": "allow"
+        },
+        "skill": {
+          "*": "allow"
+        },
+        "task": {
+          "*": "deny",
+          "explore": "allow"
+        }
+      }
+    },
+    "todo-manager": {
+      "description": "Manages the implementation TODO list for Honocommerce. Creates, reads, updates, and marks endpoints as done. Always check this agent at the start of a session.",
+      "mode": "subagent",
+      "model": "zai-coding-plan/glm-4.7-flash",
+      "prompt": "You are the Honocommerce TODO manager. You maintain the file TODO.md in the project root. You can: (1) list all todos, (2) add a new todo, (3) mark a todo as done [x], (4) mark a todo as in-progress [-], (5) show next priority todo. The TODO.md uses this format:\n\n## Honocommerce Implementation Progress\n\n### Infrastructure\n- [ ] Auth middleware\n- [ ] Error handler middleware  \n- [ ] Rate limiter middleware\n- [ ] WC error helper\n- [ ] WC response formatter\n- [ ] Pagination helper\n- [ ] DB connection (Drizzle)\n- [ ] BullMQ queue setup\n\n### Products\n- [ ] GET /products (list)\n- [ ] POST /products\n- [ ] GET /products/:id\n- [ ] PUT /products/:id\n- [ ] DELETE /products/:id\n- [ ] GET /products/:id/variations\n- [ ] POST /products/:id/variations\n- [ ] PUT /products/:id/variations/:id\n- [ ] DELETE /products/:id/variations/:id\n- [ ] POST /products/batch\n- [ ] GET /products/categories\n- [ ] POST /products/categories\n- [ ] GET /products/categories/:id\n- [ ] PUT /products/categories/:id\n- [ ] DELETE /products/categories/:id\n- [ ] GET /products/tags\n- [ ] POST /products/tags\n- [ ] GET /products/attributes\n- [ ] POST /products/attributes\n- [ ] GET /products/attributes/:id/terms\n\n### Orders\n- [ ] GET /orders (list)\n- [ ] POST /orders\n- [ ] GET /orders/:id\n- [ ] PUT /orders/:id\n- [ ] DELETE /orders/:id\n- [ ] GET /orders/:id/refunds\n- [ ] POST /orders/:id/refunds\n- [ ] DELETE /orders/:id/refunds/:id\n- [ ] POST /orders/batch\n\n### Customers\n- [ ] GET /customers\n- [ ] POST /customers\n- [ ] GET /customers/:id\n- [ ] PUT /customers/:id\n- [ ] DELETE /customers/:id\n- [ ] GET /customers/:id/downloads\n- [ ] POST /customers/batch\n\n### Coupons\n- [ ] GET /coupons\n- [ ] POST /coupons\n- [ ] GET /coupons/:id\n- [ ] PUT /coupons/:id\n- [ ] DELETE /coupons/:id\n- [ ] POST /coupons/batch\n\n### Webhooks\n- [ ] GET /webhooks\n- [ ] POST /webhooks\n- [ ] GET /webhooks/:id\n- [ ] PUT /webhooks/:id\n- [ ] DELETE /webhooks/:id\n- [ ] Webhook dispatcher (outbound)\n\n### Reports\n- [ ] GET /reports/sales\n- [ ] GET /reports/top-sellers\n- [ ] GET /reports/orders/totals\n\n### Settings\n- [ ] GET /settings\n- [ ] GET /settings/:group\n- [ ] PUT /settings/:group/:id\n\n### Shipping & Taxes\n- [ ] GET /shipping/zones\n- [ ] POST /shipping/zones\n- [ ] GET /taxes\n- [ ] POST /taxes\n\nAlways write changes back to TODO.md using the write tool.",
+      "tools": {
+        "write": true,
+        "edit": true,
+        "bash": false
+      },
+      "permission": {
+        "edit": "allow",
+        "bash": {
+          "*": "deny"
+        },
+        "skill": {
+          "woocommerce-api": "deny"
+        },
+        "task": {
+          "*": "deny"
+        }
+      }
+    },
+    "explore": {
+      "mode": "subagent",
+      "description": "Read-only codebase explorer. Use to find files, search for patterns, understand existing code structure without making changes.",
+      "tools": {
+        "write": false,
+        "edit": false,
+        "bash": false
+      },
+      "permission": {
+        "edit": "deny",
+        "bash": {
+          "*": "deny",
+          "ls *": "allow",
+          "cat *": "allow",
+          "grep *": "allow",
+          "find *": "allow"
+        }
+      }
+    }
+  }
+}
