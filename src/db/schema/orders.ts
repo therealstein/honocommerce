@@ -196,9 +196,36 @@ export const orderRefunds = pgTable('order_refunds', {
   metaData: jsonb('meta_data').notNull().default([]),
 });
 
+// Order notes
+export const orderNotes = pgTable('order_notes', {
+  id: serial('id').primaryKey(),
+  orderId: integer('order_id').notNull(),
+  
+  // Note content
+  note: text('note').notNull(),
+  
+  // Author (0 = system, customer ID = customer, user ID = admin)
+  author: integer('author').notNull().default(0),
+  
+  // Date created
+  dateCreated: timestamp('date_created').notNull().defaultNow(),
+  dateCreatedGmt: timestamp('date_created_gmt').notNull().defaultNow(),
+  
+  // Is this a customer note? (visible to customer)
+  isCustomerNote: boolean('is_customer_note').notNull().default(false),
+  
+  // Added by user (for tracking who added the note)
+  addedByUser: boolean('added_by_user').notNull().default(false),
+  
+  // System note (auto-generated)
+  isSystem: boolean('is_system').notNull().default(false),
+});
+
 export type Order = typeof orders.$inferSelect;
 export type NewOrder = typeof orders.$inferInsert;
 export type OrderItem = typeof orderItems.$inferSelect;
 export type NewOrderItem = typeof orderItems.$inferInsert;
 export type OrderRefund = typeof orderRefunds.$inferSelect;
 export type NewOrderRefund = typeof orderRefunds.$inferInsert;
+export type OrderNote = typeof orderNotes.$inferSelect;
+export type NewOrderNote = typeof orderNotes.$inferInsert;

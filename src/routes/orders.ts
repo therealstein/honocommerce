@@ -1,6 +1,6 @@
 /**
  * Orders Routes
- * All order-related endpoints including refunds
+ * All order-related endpoints including refunds and notes
  */
 
 import { Hono } from 'hono';
@@ -11,8 +11,14 @@ import {
   batchOrdersSchema,
   createRefundSchema 
 } from '../validators/order.validators';
+import { 
+  createOrderNoteSchema, 
+  noteListQuerySchema 
+} from '../validators/order-note.validators';
 import { orderService } from '../services/order.service';
+import { orderNoteService } from '../services/order-note.service';
 import { formatOrderResponse, formatOrderListResponse, formatRefundResponse } from '../lib/order-formatter';
+import { formatOrderNoteResponse, formatOrderNoteListResponse } from '../lib/order-note-formatter';
 import { setPaginationHeaders } from '../lib/wc-response';
 import { wcError, WcErrorCodes } from '../lib/wc-error';
 
@@ -194,6 +200,105 @@ router.delete('/:id', async (c) => {
   return c.json({
     ...formatOrderResponse(order),
     message: force ? 'Permanently deleted order.' : 'Moved order to trash.',
+  });
+});
+
+// ========== ORDER NOTES ==========
+
+/**
+ * GET /orders/:id/notes - List order notes
+ */
+router.get('/:id/notes', async (c) => {
+  const orderId = parseInt(c.req.param('id'), 10);
+  if (isNaN(orderId) || orderId <= 0) {
+    return c.json(wcError(WcErrorCodes.ORDER_INVALID_ID, 'Invalid order ID.', 400), 400);
+  }
+  
+  const order = await orderService.get(orderId);
+  if (!order) {
+    return c.json(wcError(WcErrorCodes.ORDER_INVALID_ID, 'Invalid order ID.', 404), 404);
+  }
+  
+  const query = noteListQuerySchema.parse(c.req.query());
+  const notes = await orderNoteService.list(orderId, query.type);
+  
+  return c.json(formatOrderNoteListResponse(notes, orderId));
+});
+
+/**
+ * POST /orders/:id/notes - Create order note
+ */
+router.post('/:id/notes', async (c) => {
+  const orderId = parseInt(c.req.param('id'), 10);
+  if (isNaN(orderId) || orderId <= 0) {
+    return c.json(wcError(WcErrorCodes.ORDER_INVALID_ID, 'Invalid order ID.', 400), 400);
+  }
+  
+  const order = await orderService.get(orderId);
+  if (!order) {
+    return c.json(wcError(WcErrorCodes.ORDER_INVALID_ID, 'Invalid order ID.', 404), 404);
+  }
+  
+  let body: unknown;
+  try { body = await c.req.json(); } catch {
+    return c.json(wcError(WcErrorCodes.INVALID_PARAM, 'Invalid JSON body.', 400), 400);
+  }
+  
+  const parseResult = createOrderNoteSchema.safeParse(body);
+  if (!parseResult.success) {
+    const errors = parseResult.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ');
+    return c.json(wcError(WcErrorCodes.INVALID_PARAM, errors, 400), 400);
+  }
+  
+  const note = await orderNoteService.create(orderId, parseResult.data);
+  
+  return c.json(formatOrderNoteResponse(note, orderId), 201);
+});
+
+/**
+ * GET /orders/:id/notes/:note_id - Get order note
+ */
+router.get('/:id/notes/:note_id', async (c) => {
+  const orderId = parseInt(c.req.param('id'), 10);
+  const noteId = parseInt(c.req.param('note_id'), 10);
+  
+  if (isNaN(orderId) || orderId <= 0 || isNaN(noteId) || noteId <= 0) {
+    return c.json(wcError(WcErrorCodes.INVALID_PARAM, 'Invalid ID.', 400), 400);
+  }
+  
+  const note = await orderNoteService.get(orderId, noteId);
+  if (!note) {
+    return c.json(wcError(WcErrorCodes.INVALID_PARAM, 'Invalid note ID.', 404), 404);
+  }
+  
+  return c.json(formatOrderNoteResponse(note, orderId));
+});
+
+/**
+ * DELETE /orders/:id/notes/:note_id - Delete order note
+ */
+router.delete('/:id/notes/:note_id', async (c) => {
+  const orderId = parseInt(c.req.param('id'), 10);
+  const noteId = parseInt(c.req.param('note_id'), 10);
+  
+  if (isNaN(orderId) || orderId <= 0 || isNaN(noteId) || noteId <= 0) {
+    return c.json(wcError(WcErrorCodes.INVALID_PARAM, 'Invalid ID.', 400), 400);
+  }
+  
+  const deleted = await orderNoteService.delete(orderId, noteId);
+  if (!deleted) {
+    return c.json(wcError(WcErrorCodes.INVALID_PARAM, 'Invalid note ID.', 404), 404);
+  }
+  
+  return c.json({
+    id: noteId,
+    note: deleted.note,
+    date_created: deleted.dateCreated.toISOString(),
+    message: 'Deleted note.',
+    _links: {
+      self: [{ href: `/wp-json/wc/v3/orders/${orderId}/notes/${noteId}` }],
+      collection: [{ href: `/wp-json/wc/v3/orders/${orderId}/notes` }],
+    },
   });
 });
 

@@ -15,3 +15,4 @@ export * from './webhook.validators';
 export * from './shipping.validators';
 export * from './tax.validators';
 export * from './payment-gateway.validators';
+export * from './order-note.validators';
