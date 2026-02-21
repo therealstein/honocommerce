@@ -24,10 +24,15 @@ import shippingRouter from './routes/shipping';
 import taxesRouter from './routes/taxes';
 import paymentGatewaysRouter from './routes/payment-gateways';
 import dataRouter from './routes/data';
+import pluginsRouter from './routes/plugins';
 
 // Import queue system
 import { initializeQueues, isQueueEnabled, getQueueStats, shutdownQueues } from './queue';
 import { startAllWorkers, stopAllWorkers } from './queue/workers';
+
+// Import plugin system
+import { initializePluginSystem, shutdownPluginSystem } from './services/plugin.service';
+import { doAction } from './lib/hooks';
 
 const app = new Hono();
 
@@ -66,6 +71,7 @@ api.route('/shipping', shippingRouter);
 api.route('/taxes', taxesRouter);
 api.route('/payment-gateways', paymentGatewaysRouter);
 api.route('/data', dataRouter);
+api.route('/plugins', pluginsRouter);
 
 // Mount API at WooCommerce-compatible path
 app.route('/wp-json/wc/v3', api);
@@ -97,6 +103,10 @@ const initializeApp = async () => {
   } else {
     console.log('📦 Queue system using in-memory fallback');
   }
+
+  // Initialize plugin system
+  console.log('🔌 Initializing plugin system...');
+  await initializePluginSystem();
 };
 
 // Start initialization
@@ -107,6 +117,9 @@ initializeApp().catch(err => {
 // Graceful shutdown
 const gracefulShutdown = async (signal: string) => {
   console.log(`\n${signal} received, shutting down gracefully...`);
+  
+  // Shutdown plugin system
+  await shutdownPluginSystem();
   
   // Stop accepting new jobs
   await stopAllWorkers();

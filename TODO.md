@@ -306,6 +306,316 @@ Legend: `[x]` done · `[-]` in progress · `[ ]` not started
 
 ---
 
+## PLUGIN SYSTEM IMPLEMENTATION 🟢 (NEW)
+
+### [ ] Plugin Interface Layer
+
+- [ ] `src/plugins/types/plugin.interface.ts` — Main plugin type definition
+  - [ ] Plugin lifecycle methods: `install()`, `activate()`, `deactivate()`, `uninstall()`
+  - [ ] Plugin hooks system: `hooks` property with event listeners
+  - [ ] Hook registration: `registerHook(name, callback)`
+  - [ ] Plugin metadata: `name`, `version`, `description`, `author`, `requires`
+  - [ ] Plugin capabilities: `capabilities` array
+  - [ ] Plugin status property: `status` ('installed', 'active', 'inactive')
+  - [ ] Plugin settings: `settings` object with default values
+  - [ ] Plugin dependencies: `dependencies` array
+- [ ] `src/plugins/types/plugin-event.types.ts` — Event type definitions
+  - [ ] `OrderCreatedEvent`, `OrderUpdatedEvent`, `OrderDeletedEvent`
+  - [ ] `ProductCreatedEvent`, `ProductUpdatedEvent`, `ProductDeletedEvent`
+  - [ ] `CustomerCreatedEvent`, `CustomerUpdatedEvent`
+  - [ ] `CouponCreatedEvent`, `CouponUpdatedEvent`
+  - [ ] `WebhookCreatedEvent`, `WebhookUpdatedEvent`
+  - [ ] `OrderStatusChangedEvent`
+  - [ ] `InventoryUpdatedEvent`
+  - [ ] Custom event support with arbitrary payload types
+- [ ] `src/plugins/types/hook.types.ts` — Hook system types
+  - [ ] `HookCallback` type for hook handlers
+  - [ ] `Hook` type definition
+  - [ ] `Priority` type (0-100, higher = runs first)
+  - [ ] `HookListener` with metadata
+
+### [ ] Hook System Core
+
+- [ ] `src/plugins/hooks/hook-system.ts` — Central hook manager
+  - [ ] Hook registration: `registerHook(event, callback, priority)`
+  - [ ] Hook execution: `triggerHook(event, payload)`
+  - [ ] Priority-based execution order
+  - [ ] Hook filtering system
+  - [ ] Hook blocking mechanism
+  - [ ] Hook metadata storage (priority, callbacks)
+  - [ ] Hook execution tracking
+- [ ] `src/plugins/hooks/hook-handler.ts` — Individual hook implementations
+  - [ ] `OrderHooks` - Order lifecycle events
+  - [ ] `ProductHooks` - Product lifecycle events
+  - [ ] `CustomerHooks` - Customer events
+  - [ ] `InventoryHooks` - Stock changes
+  - [ ] `WebhookHooks` - Webhook delivery events
+- [ ] `src/plugins/hooks/hook-broadcast.ts` — Broadcaster to subscribed plugins
+  - [ ] Event publishing
+  - [ ] Subscribers list management
+  - [ ] Memory storage (can extend to Redis for distributed systems)
+
+### [ ] Plugin Manager Service
+
+- [ ] `src/plugins/services/plugin-manager.service.ts` — Core plugin management
+  - [ ] Plugin discovery: `discoverPlugins(pluginDir: string)`
+  - [ ] Plugin loading: `loadPlugin(pluginPath: string)`
+  - [ ] Plugin activation: `activatePlugin(pluginId: string)`
+  - [ ] Plugin deactivation: `deactivatePlugin(pluginId: string)`
+  - [ ] Plugin uninstall: `uninstallPlugin(pluginId: string)`
+  - [ ] Plugin listing: `listPlugins()`
+  - [ ] Plugin installation: `installPlugin(pluginZip: Buffer)`
+  - [ ] Plugin update: `updatePlugin(pluginId: string)`
+  - [ ] Plugin migration support: `runPluginMigrations(pluginId: string)`
+  - [ ] Dependency resolution: `resolveDependencies(pluginId: string)`
+- [ ] `src/plugins/services/plugin-registry.ts` — Plugin registration storage
+  - [ ] Runtime plugin registry
+  - [ ] Active plugin tracking
+  - [ ] Loaded plugin instances
+  - [ ] Plugin configuration cache
+
+### [ ] Plugin Database Schema
+
+- [ ] `src/db/schema/plugins.ts` — Core plugin tables
+  - [ ] `plugins` table: id, name, version, slug, status, author, description
+  - [ ] `plugin_settings` table: plugin_id, setting_key, setting_value
+  - [ ] `plugin_dependencies` table: plugin_id, requires_plugin, version_constraint
+  - [ ] `plugin_events` table: plugin_id, event_name, event_data, created_at
+  - [ ] `plugin_logs` table: id, plugin_id, level, message, created_at
+  - [ ] `plugin_schedules` table: plugin_id, schedule_name, cron_expression, enabled
+- [ ] `src/db/migrations/` — Drizzle migrations
+  - [ ] Create plugins table
+  - [ ] Create plugin_settings table
+  - [ ] Create plugin_dependencies table
+  - [ ] Create plugin_events table
+  - [ ] Create plugin_logs table
+  - [ ] Create plugin_schedules table
+  - [ ] Add indexes for performance
+- [ ] `src/db/schema/plugin-hooks.ts` — Plugin hook subscriptions
+  - [ ] `plugin_hooks` table: plugin_id, hook_name, priority, enabled
+  - [ ] `hook_subscribers` table: plugin_id, hook_name, callback_name
+- [ ] `src/db/seed/plugins.ts` — Seed initial plugin data
+  - [ ] Sample plugin entries
+
+### [ ] Plugin API Routes
+
+- [ ] `src/routes/plugins/index.ts` — Plugin routes entry point
+- [ ] `src/routes/plugins/list.ts` — GET /wp-json/wc/v3/plugins
+  - [ ] List all installed plugins
+  - [ ] Filter by status (active/inactive)
+  - [ ] Filter by capabilities
+  - [ ] Pagination support
+- [ ] `src/routes/plugins/install.ts` — POST /wp-json/wc/v3/plugins/install
+  - [ ] Install plugin from ZIP file
+  - [ ] Validate plugin structure
+  - [ ] Run migrations
+  - [ ] Store in database
+- [ ] `src/routes/plugins/activate.ts` — POST /wp-json/wc/v3/plugins/:id/activate
+  - [ ] Activate plugin
+  - [ ] Run activate() lifecycle method
+  - [ ] Register hooks
+  - [ ] Update status
+- [ ] `src/routes/plugins/deactivate.ts` — POST /wp-json/wc/v3/plugins/:id/deactivate
+  - [ ] Deactivate plugin
+  - [ ] Unregister hooks
+  - [ ] Update status
+  - [ ] Save state
+- [ ] `src/routes/plugins/uninstall.ts` — POST /wp-json/wc/v3/plugins/:id/uninstall
+  - [ ] Uninstall plugin
+  - [ ] Run uninstall() lifecycle method
+  - [ ] Clean up settings
+  - [ ] Remove from database
+- [ ] `src/routes/plugins/settings.ts` — GET/PUT/POST /wp-json/wc/v3/plugins/:id/settings
+  - [ ] Get plugin settings
+  - [ ] Update plugin settings
+  - [ ] Batch update settings
+- [ ] `src/routes/plugins/logs.ts` — GET /wp-json/wc/v3/plugins/:id/logs
+  - [ ] Get plugin logs
+  - [ ] Filter by level (info/warn/error)
+  - [ ] Pagination
+  - [ ] Time range filter
+- [ ] `src/routes/plugins/hooks.ts` — GET /wp-json/wc/v3/plugins/:id/hooks
+  - [ ] List plugin hooks
+  - [ ] Check hook registration status
+- [ ] `src/routes/plugins/deps.ts` — GET /wp-json/wc/v3/plugins/:id/dependencies
+  - [ ] List plugin dependencies
+  - [ ] Check dependency status
+  - [ ] Show required plugins
+- [ ] `src/routes/plugins/list-active.ts` — GET /wp-json/wc/v3/plugins/active
+  - [ ] Quick endpoint for active plugins only
+
+### [ ] Scheduler System
+
+- [ ] `src/plugins/scheduler/scheduler.ts` — Core scheduler service
+  - [ ] Cron expression parsing
+  - [ ] Job scheduling: `scheduleJob(name, cron, callback)`
+  - [ ] Job execution: `runScheduledJobs()`
+  - [ ] Job cancellation: `cancelJob(name)`
+  - [ ] Job status tracking
+  - [ ] Execution history
+  - [ ] Retry logic for failed jobs
+- [ ] `src/plugins/scheduler/scheduler-mgr.ts` — Job manager
+  - [ ] Job queue management
+  - [ ] Time-based job dispatching
+  - [ ] Daily/weekly/monthly job support
+  - [ ] Custom interval jobs
+- [ ] `src/plugins/scheduler/job-worker.ts` — Worker that runs scheduled jobs
+  - [ ] Background job execution
+  - [ ] Error handling and retry
+  - [ ] Job log creation
+- [ ] `src/plugins/scheduler/cron-parser.ts` — Cron expression parser
+  - [ ] Support standard 5-field cron: minute hour day month weekday
+  - [ ] Support wildcard expressions
+  - [ ] Support complex scheduling patterns
+- [ ] `src/plugins/scheduler/interval-scheduler.ts` — Interval-based scheduling
+  - [ ] Fixed interval jobs (e.g., every 5 minutes)
+  - [ ] Randomized intervals
+  - [ ] Flexible scheduling options
+
+### [ ] Plugin Lifecycle Integration
+
+- [ ] `src/plugins/lifecycle/install.ts` — Plugin installation logic
+  - [ ] Validate plugin structure
+  - [ ] Check dependencies
+  - [ ] Create database tables (if any)
+  - [ ] Insert plugin record
+  - [ ] Create default settings
+- [ ] `src/plugins/lifecycle/activate.ts` — Plugin activation logic
+  - [ ] Run `activate()` hook
+  - [ ] Register hooks
+  - [ ] Schedule cron jobs
+  - [ ] Run initial setup
+- [ ] `src/plugins/lifecycle/deactivate.ts` — Plugin deactivation logic
+  - [ ] Run `deactivate()` hook
+  - [ ] Unregister hooks
+  - [ ] Clear scheduled jobs
+  - [ ] Save plugin state
+- [ ] `src/plugins/lifecycle/uninstall.ts` — Plugin uninstallation logic
+  - [ ] Run `uninstall()` hook
+  - [ ] Delete plugin record
+  - [ ] Clean up settings
+  - [ ] Remove database tables (if any)
+  - [ ] Clear cached data
+
+### [ ] Plugin System Utilities
+
+- [ ] `src/plugins/utils/plugin-loader.ts` — Dynamic plugin loader
+  - [ ] Load plugin TypeScript/JavaScript modules
+  - [ ] Handle async plugin loading
+  - [ ] Error handling during loading
+  - [ ] Plugin type detection
+- [ ] `src/plugins/utils/plugin-validator.ts` — Plugin structure validator
+  - [ ] Validate package.json
+  - [ ] Validate main entry point
+  - [ ] Validate required files
+  - [ ] Validate plugin structure
+- [ ] `src/plugins/utils/plugin-compat.ts` — Compatibility checker
+  - [ ] Check Honocommerce version compatibility
+  - [ ] Check plugin dependencies
+  - [ ] Check required capabilities
+  - [ ] Generate compatibility reports
+- [ ] `src/plugins/utils/plugin-zipper.ts` — Plugin archive utilities
+  - [ ] Create plugin ZIP from directory
+  - [ ] Extract plugin ZIP
+  - [ ] Validate ZIP structure
+
+### [ ] Plugin Example - Order Status Checker
+
+- [ ] `plugins/order-status-checker/` — Example plugin directory
+  - [ ] `plugins/order-status-checker/package.json` — Plugin metadata
+    - [ ] name, version, description, author
+    - [ ] main entry point: `main.ts`
+    - [ ] hooks: `order.status.changed`, `order.created`
+    - [ ] settings: `checkInterval`, `processingMinutes`
+  - [ ] `plugins/order-status-checker/main.ts` — Plugin main file
+    - [ ] Plugin class with lifecycle methods
+    - [ ] `install()` - Create required metadata table
+    - [ ] `activate()` - Register hooks and start scheduler
+    - [ ] `deactivate()` - Clear hooks and stop scheduler
+    - [ ] `uninstall()` - Clean up metadata
+    - [ ] `registerHook()` - Register hooks
+  - [ ] `plugins/order-status-checker/hooks.ts` — Hook implementations
+    - [ ] `checkPendingOrders()` - Check pending orders
+    - [ ] Order filtering by metadata
+    - [ ] Update order status to 'processing' if condition met
+  - [ ] `plugins/order-status-checker/schedule.ts` — Scheduler logic
+    - [ ] Schedule job to run every X minutes
+    - [ ] Check pending orders with metadata
+  - [ ] `plugins/order-status-checker/settings.ts` — Default settings
+    - [ ] Check interval: 15 minutes
+    - [ ] Processing threshold: 15 minutes
+  - [ ] `plugins/order-status-checker/config.json` — Plugin configuration
+
+### [ ] Plugin System Documentation
+
+- [ ] `src/plugins/README.md` — Plugin developer documentation
+  - [ ] Plugin structure guide
+  - [ ] Hook system documentation
+  - [ ] Scheduler usage guide
+  - [ ] Plugin example
+  - [ ] Best practices
+  - [ ] Common patterns
+  - [ ] Troubleshooting guide
+
+### [ ] Plugin System Tests
+
+- [ ] `src/__tests__/plugins/plugin-interface.test.ts` — Interface tests
+  - [ ] Plugin lifecycle method invocation
+  - [ ] Hook registration and execution
+  - [ ] Hook priority handling
+- [ ] `src/__tests__/plugins/hook-system.test.ts` — Hook system tests
+  - [ ] Hook execution order
+  - [ ] Hook filtering
+  - [ ] Hook blocking
+  - [ ] Multiple hook listeners
+- [ ] `src/__tests__/plugins/plugin-manager.test.ts` — Manager tests
+  - [ ] Plugin discovery
+  - [ ] Plugin loading
+  - [ ] Plugin activation/deactivation
+  - [ ] Dependency resolution
+- [ ] `src/__tests__/plugins/scheduler.test.ts` — Scheduler tests
+  - [ ] Cron job scheduling
+  - [ ] Job execution timing
+  - [ ] Job cancellation
+  - [ ] Job retry logic
+- [ ] `src/__tests__/plugins/order-status-checker.test.ts` — Example plugin tests
+  - [ ] Order status checking
+  - [ ] Metadata filtering
+  - [ ] Status update logic
+- [ ] `src/__tests__/plugins/integration.test.ts` — Integration tests
+  - [ ] Full plugin lifecycle
+  - [ ] Hook execution across plugins
+  - [ ] Scheduler and hooks integration
+- [ ] `src/__tests__/plugins/plugin-api.test.ts` — API tests
+  - [ ] Plugin install API
+  - [ ] Plugin activate API
+  - [ ] Plugin settings API
+  - [ ] Plugin logs API
+
+### [ ] Plugin System Enhancements
+
+- [ ] Plugin version management
+  - [ ] Check for plugin updates
+  - [ ] Automatic plugin updates
+  - [ ] Rollback support
+- [ ] Plugin marketplace integration
+  - [ ] Plugin discovery endpoint
+  - [ ] Plugin installation from marketplace
+  - [ ] Plugin ratings and reviews
+- [ ] Plugin hooks to events system
+  - [ ] Bridge plugin hooks to event system
+  - [ ] Support for custom event hooks
+- [ ] Plugin performance monitoring
+  - [ ] Execution time tracking
+  - [ ] Memory usage tracking
+  - [ ] Performance metrics API
+- [ ] Plugin API documentation generation
+  - [ ] Auto-generate plugin docs from code
+  - [ ] Plugin API endpoint discovery
+  - [ ] Interactive API explorer
+
+---
+
 ## API Endpoint Summary
 
 | API | Endpoints | Status |
