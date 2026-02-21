@@ -23,6 +23,7 @@ import settingsRouter from './routes/settings';
 import shippingRouter from './routes/shipping';
 import taxesRouter from './routes/taxes';
 import paymentGatewaysRouter from './routes/payment-gateways';
+import dataRouter from './routes/data';
 
 // Import queue system
 import { initializeQueues, isQueueEnabled, getQueueStats, shutdownQueues } from './queue';
@@ -64,6 +65,7 @@ api.route('/settings', settingsRouter);
 api.route('/shipping', shippingRouter);
 api.route('/taxes', taxesRouter);
 api.route('/payment-gateways', paymentGatewaysRouter);
+api.route('/data', dataRouter);
 
 // Mount API at WooCommerce-compatible path
 app.route('/wp-json/wc/v3', api);
