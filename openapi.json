@@ -1,0 +1,890 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Honocommerce API",
+    "description": "WooCommerce REST API v3 compatible backend",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Honocommerce",
+      "url": "https://github.com/honocommerce/honocommerce"
+    },
+    "license": {
+      "name": "MIT",
+      "url": "https://opensource.org/licenses/MIT"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000/wp-json/wc/v3",
+      "description": "Local development server"
+    }
+  ],
+  "security": [
+    {
+      "BasicAuth": []
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "BasicAuth": {
+        "type": "http",
+        "scheme": "basic",
+        "description": "WooCommerce API key authentication using consumer_key as username and consumer_secret as password"
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "required": ["code", "message", "data"],
+        "properties": {
+          "code": {
+            "type": "string",
+            "example": "woocommerce_rest_product_invalid_id"
+          },
+          "message": {
+            "type": "string",
+            "example": "Invalid ID."
+          },
+          "data": {
+            "type": "object",
+            "required": ["status"],
+            "properties": {
+              "status": {
+                "type": "integer",
+                "example": 404
+              }
+            }
+          }
+        }
+      },
+      "Product": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "example": 1 },
+          "name": { "type": "string", "example": "Premium T-Shirt" },
+          "slug": { "type": "string", "example": "premium-t-shirt" },
+          "type": { "type": "string", "enum": ["simple", "grouped", "external", "variable"], "example": "simple" },
+          "status": { "type": "string", "enum": ["draft", "pending", "private", "publish"], "example": "publish" },
+          "featured": { "type": "boolean", "example": false },
+          "description": { "type": "string", "example": "A premium quality t-shirt" },
+          "short_description": { "type": "string", "example": "Premium quality" },
+          "sku": { "type": "string", "example": "TSHIRT-001" },
+          "price": { "type": "string", "example": "29.99" },
+          "regular_price": { "type": "string", "example": "39.99" },
+          "sale_price": { "type": "string", "example": "29.99" },
+          "stock_status": { "type": "string", "enum": ["instock", "outofstock", "onbackorder"], "example": "instock" },
+          "stock_quantity": { "type": "integer", "example": 100 },
+          "manage_stock": { "type": "boolean", "example": true },
+          "categories": { "type": "array", "items": { "$ref": "#/components/schemas/Category" } },
+          "tags": { "type": "array", "items": { "$ref": "#/components/schemas/Tag" } },
+          "images": { "type": "array", "items": { "$ref": "#/components/schemas/Image" } },
+          "date_created": { "type": "string", "format": "date-time" },
+          "date_modified": { "type": "string", "format": "date-time" },
+          "_links": { "$ref": "#/components/schemas/Links" }
+        }
+      },
+      "Order": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "example": 1 },
+          "number": { "type": "string", "example": "1001" },
+          "order_key": { "type": "string", "example": "wc_order_abc123" },
+          "status": { "type": "string", "enum": ["pending", "processing", "on-hold", "completed", "cancelled", "refunded", "failed"], "example": "pending" },
+          "total": { "type": "string", "example": "99.99" },
+          "currency": { "type": "string", "example": "USD" },
+          "customer_id": { "type": "integer", "example": 1 },
+          "billing": { "$ref": "#/components/schemas/Address" },
+          "shipping": { "$ref": "#/components/schemas/Address" },
+          "line_items": { "type": "array", "items": { "$ref": "#/components/schemas/LineItem" } },
+          "coupon_lines": { "type": "array", "items": { "$ref": "#/components/schemas/CouponLine" } },
+          "date_created": { "type": "string", "format": "date-time" },
+          "date_modified": { "type": "string", "format": "date-time" },
+          "_links": { "$ref": "#/components/schemas/Links" }
+        }
+      },
+      "Customer": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "example": 1 },
+          "email": { "type": "string", "format": "email", "example": "customer@example.com" },
+          "first_name": { "type": "string", "example": "John" },
+          "last_name": { "type": "string", "example": "Doe" },
+          "username": { "type": "string", "example": "johndoe" },
+          "role": { "type": "string", "example": "customer" },
+          "billing": { "$ref": "#/components/schemas/Address" },
+          "shipping": { "$ref": "#/components/schemas/Address" },
+          "date_created": { "type": "string", "format": "date-time" },
+          "_links": { "$ref": "#/components/schemas/Links" }
+        }
+      },
+      "Coupon": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "example": 1 },
+          "code": { "type": "string", "example": "SUMMER20" },
+          "amount": { "type": "string", "example": "20.00" },
+          "discount_type": { "type": "string", "enum": ["percent", "fixed_cart", "fixed_product"], "example": "percent" },
+          "description": { "type": "string", "example": "Summer sale discount" },
+          "usage_count": { "type": "integer", "example": 50 },
+          "usage_limit": { "type": "integer", "example": 100 },
+          "date_created": { "type": "string", "format": "date-time" },
+          "_links": { "$ref": "#/components/schemas/Links" }
+        }
+      },
+      "Webhook": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "example": 1 },
+          "name": { "type": "string", "example": "Order webhook" },
+          "status": { "type": "string", "enum": ["active", "paused", "disabled"], "example": "active" },
+          "topic": { "type": "string", "example": "order.created" },
+          "delivery_url": { "type": "string", "format": "uri", "example": "https://example.com/webhooks" },
+          "date_created": { "type": "string", "format": "date-time" },
+          "_links": { "$ref": "#/components/schemas/Links" }
+        }
+      },
+      "Category": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "example": 1 },
+          "name": { "type": "string", "example": "Clothing" },
+          "slug": { "type": "string", "example": "clothing" }
+        }
+      },
+      "Tag": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "example": 1 },
+          "name": { "type": "string", "example": "New" },
+          "slug": { "type": "string", "example": "new" }
+        }
+      },
+      "Image": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "example": 1 },
+          "src": { "type": "string", "format": "uri", "example": "https://example.com/image.jpg" },
+          "name": { "type": "string", "example": "Product image" },
+          "alt": { "type": "string", "example": "Product image" }
+        }
+      },
+      "Address": {
+        "type": "object",
+        "properties": {
+          "first_name": { "type": "string", "example": "John" },
+          "last_name": { "type": "string", "example": "Doe" },
+          "company": { "type": "string", "example": "ACME Inc" },
+          "address_1": { "type": "string", "example": "123 Main St" },
+          "address_2": { "type": "string", "example": "Apt 4B" },
+          "city": { "type": "string", "example": "New York" },
+          "state": { "type": "string", "example": "NY" },
+          "postcode": { "type": "string", "example": "10001" },
+          "country": { "type": "string", "example": "US" },
+          "email": { "type": "string", "format": "email", "example": "john@example.com" },
+          "phone": { "type": "string", "example": "+1234567890" }
+        }
+      },
+      "LineItem": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "example": 1 },
+          "name": { "type": "string", "example": "Premium T-Shirt" },
+          "product_id": { "type": "integer", "example": 1 },
+          "variation_id": { "type": "integer", "example": 0 },
+          "quantity": { "type": "integer", "example": 2 },
+          "price": { "type": "integer", "example": 2999 },
+          "subtotal": { "type": "string", "example": "59.98" },
+          "total": { "type": "string", "example": "59.98" }
+        }
+      },
+      "CouponLine": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "example": 1 },
+          "code": { "type": "string", "example": "SUMMER20" },
+          "discount": { "type": "string", "example": "12.00" },
+          "discount_tax": { "type": "string", "example": "0.00" }
+        }
+      },
+      "Links": {
+        "type": "object",
+        "properties": {
+          "self": { "type": "array", "items": { "$ref": "#/components/schemas/Link" } },
+          "collection": { "type": "array", "items": { "$ref": "#/components/schemas/Link" } }
+        }
+      },
+      "Link": {
+        "type": "object",
+        "properties": {
+          "href": { "type": "string", "format": "uri" }
+        }
+      },
+      "Report": {
+        "type": "object",
+        "properties": {
+          "slug": { "type": "string", "example": "sales" },
+          "description": { "type": "string", "example": "List of sales" },
+          "_links": { "$ref": "#/components/schemas/Links" }
+        }
+      },
+      "Plugin": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "example": "order-status-checker" },
+          "name": { "type": "string", "example": "Order Status Checker" },
+          "version": { "type": "string", "example": "1.0.0" },
+          "description": { "type": "string", "example": "Auto-process orders" },
+          "status": { "type": "string", "enum": ["installed", "active", "inactive", "error"], "example": "active" }
+        }
+      }
+    },
+    "parameters": {
+      "PageParam": {
+        "name": "page",
+        "in": "query",
+        "description": "Current page of the collection",
+        "schema": { "type": "integer", "default": 1, "minimum": 1 }
+      },
+      "PerPageParam": {
+        "name": "per_page",
+        "in": "query",
+        "description": "Maximum number of items to be returned in result set",
+        "schema": { "type": "integer", "default": 10, "minimum": 1, "maximum": 100 }
+      },
+      "SearchParam": {
+        "name": "search",
+        "in": "query",
+        "description": "Limit results to those matching a string",
+        "schema": { "type": "string" }
+      },
+      "AfterParam": {
+        "name": "after",
+        "in": "query",
+        "description": "Limit response to resources published after a given ISO8601 compliant date",
+        "schema": { "type": "string", "format": "date-time" }
+      },
+      "BeforeParam": {
+        "name": "before",
+        "in": "query",
+        "description": "Limit response to resources published before a given ISO8601 compliant date",
+        "schema": { "type": "string", "format": "date-time" }
+      },
+      "OrderParam": {
+        "name": "order",
+        "in": "query",
+        "description": "Order sort attribute ascending or descending",
+        "schema": { "type": "string", "enum": ["asc", "desc"], "default": "desc" }
+      },
+      "OrderByParam": {
+        "name": "orderby",
+        "in": "query",
+        "description": "Sort collection by object attribute",
+        "schema": { "type": "string", "default": "date" }
+      },
+      "IdPath": {
+        "name": "id",
+        "in": "path",
+        "description": "Unique identifier for the resource",
+        "required": true,
+        "schema": { "type": "integer" }
+      }
+    },
+    "responses": {
+      "UnauthorizedError": {
+        "description": "Authentication error",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" },
+            "example": {
+              "code": "woocommerce_rest_authentication_error",
+              "message": "Invalid API key.",
+              "data": { "status": 401 }
+            }
+          }
+        }
+      },
+      "NotFoundError": {
+        "description": "Resource not found",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" },
+            "example": {
+              "code": "woocommerce_rest_product_invalid_id",
+              "message": "Invalid ID.",
+              "data": { "status": 404 }
+            }
+          }
+        }
+      },
+      "BadRequestError": {
+        "description": "Bad request",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" },
+            "example": {
+              "code": "woocommerce_rest_invalid_param",
+              "message": "Invalid parameter(s).",
+              "data": { "status": 400 }
+            }
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/products": {
+      "get": {
+        "tags": ["Products"],
+        "summary": "List all products",
+        "parameters": [
+          { "$ref": "#/components/parameters/PageParam" },
+          { "$ref": "#/components/parameters/PerPageParam" },
+          { "$ref": "#/components/parameters/SearchParam" },
+          { "$ref": "#/components/parameters/OrderParam" },
+          { "$ref": "#/components/parameters/OrderByParam" },
+          { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["draft", "pending", "private", "publish", "any"] } },
+          { "name": "type", "in": "query", "schema": { "type": "string", "enum": ["simple", "grouped", "external", "variable"] } },
+          { "name": "category", "in": "query", "schema": { "type": "integer" } },
+          { "name": "tag", "in": "query", "schema": { "type": "integer" } },
+          { "name": "sku", "in": "query", "schema": { "type": "string" } },
+          { "name": "featured", "in": "query", "schema": { "type": "boolean" } },
+          { "name": "on_sale", "in": "query", "schema": { "type": "boolean" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "headers": {
+              "X-WP-Total": { "description": "Total items", "schema": { "type": "integer" } },
+              "X-WP-TotalPages": { "description": "Total pages", "schema": { "type": "integer" } }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Product" } }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" }
+        }
+      },
+      "post": {
+        "tags": ["Products"],
+        "summary": "Create a product",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/Product" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Product created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Product" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequestError" },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" }
+        }
+      }
+    },
+    "/products/{id}": {
+      "get": {
+        "tags": ["Products"],
+        "summary": "Retrieve a product",
+        "parameters": [{ "$ref": "#/components/parameters/IdPath" }],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Product" } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" },
+          "404": { "$ref": "#/components/responses/NotFoundError" }
+        }
+      },
+      "put": {
+        "tags": ["Products"],
+        "summary": "Update a product",
+        "parameters": [{ "$ref": "#/components/parameters/IdPath" }],
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/Product" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Product updated",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Product" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequestError" },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" },
+          "404": { "$ref": "#/components/responses/NotFoundError" }
+        }
+      },
+      "delete": {
+        "tags": ["Products"],
+        "summary": "Delete a product",
+        "parameters": [
+          { "$ref": "#/components/parameters/IdPath" },
+          { "name": "force", "in": "query", "schema": { "type": "boolean", "default": false } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Product deleted",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Product" } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" },
+          "404": { "$ref": "#/components/responses/NotFoundError" }
+        }
+      }
+    },
+    "/products/batch": {
+      "post": {
+        "tags": ["Products"],
+        "summary": "Batch update products",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "create": { "type": "array", "items": { "$ref": "#/components/schemas/Product" } },
+                  "update": { "type": "array", "items": { "$ref": "#/components/schemas/Product" } },
+                  "delete": { "type": "array", "items": { "type": "integer" } }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Batch operation completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "create": { "type": "array", "items": { "$ref": "#/components/schemas/Product" } },
+                    "update": { "type": "array", "items": { "$ref": "#/components/schemas/Product" } },
+                    "delete": { "type": "array", "items": { "$ref": "#/components/schemas/Product" } }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" }
+        }
+      }
+    },
+    "/orders": {
+      "get": {
+        "tags": ["Orders"],
+        "summary": "List all orders",
+        "parameters": [
+          { "$ref": "#/components/parameters/PageParam" },
+          { "$ref": "#/components/parameters/PerPageParam" },
+          { "$ref": "#/components/parameters/OrderParam" },
+          { "$ref": "#/components/parameters/OrderByParam" },
+          { "$ref": "#/components/parameters/AfterParam" },
+          { "$ref": "#/components/parameters/BeforeParam" },
+          { "name": "status", "in": "query", "schema": { "type": "string" } },
+          { "name": "customer", "in": "query", "schema": { "type": "integer" } },
+          { "name": "product", "in": "query", "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "headers": {
+              "X-WP-Total": { "description": "Total items", "schema": { "type": "integer" } },
+              "X-WP-TotalPages": { "description": "Total pages", "schema": { "type": "integer" } }
+            },
+            "content": {
+              "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Order" } } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" }
+        }
+      },
+      "post": {
+        "tags": ["Orders"],
+        "summary": "Create an order",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/Order" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Order created",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Order" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequestError" },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" }
+        }
+      }
+    },
+    "/orders/{id}": {
+      "get": {
+        "tags": ["Orders"],
+        "summary": "Retrieve an order",
+        "parameters": [{ "$ref": "#/components/parameters/IdPath" }],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Order" } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" },
+          "404": { "$ref": "#/components/responses/NotFoundError" }
+        }
+      },
+      "put": {
+        "tags": ["Orders"],
+        "summary": "Update an order",
+        "parameters": [{ "$ref": "#/components/parameters/IdPath" }],
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/Order" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Order updated",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Order" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequestError" },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" },
+          "404": { "$ref": "#/components/responses/NotFoundError" }
+        }
+      },
+      "delete": {
+        "tags": ["Orders"],
+        "summary": "Delete an order",
+        "parameters": [
+          { "$ref": "#/components/parameters/IdPath" },
+          { "name": "force", "in": "query", "schema": { "type": "boolean", "default": false } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Order deleted",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Order" } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" },
+          "404": { "$ref": "#/components/responses/NotFoundError" }
+        }
+      }
+    },
+    "/customers": {
+      "get": {
+        "tags": ["Customers"],
+        "summary": "List all customers",
+        "parameters": [
+          { "$ref": "#/components/parameters/PageParam" },
+          { "$ref": "#/components/parameters/PerPageParam" },
+          { "$ref": "#/components/parameters/SearchParam" },
+          { "name": "email", "in": "query", "schema": { "type": "string" } },
+          { "name": "role", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Customer" } } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" }
+        }
+      },
+      "post": {
+        "tags": ["Customers"],
+        "summary": "Create a customer",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/Customer" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Customer created",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Customer" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequestError" },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" }
+        }
+      }
+    },
+    "/customers/{id}": {
+      "get": {
+        "tags": ["Customers"],
+        "summary": "Retrieve a customer",
+        "parameters": [{ "$ref": "#/components/parameters/IdPath" }],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Customer" } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" },
+          "404": { "$ref": "#/components/responses/NotFoundError" }
+        }
+      },
+      "put": {
+        "tags": ["Customers"],
+        "summary": "Update a customer",
+        "parameters": [{ "$ref": "#/components/parameters/IdPath" }],
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/Customer" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Customer updated",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Customer" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequestError" },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" },
+          "404": { "$ref": "#/components/responses/NotFoundError" }
+        }
+      },
+      "delete": {
+        "tags": ["Customers"],
+        "summary": "Delete a customer",
+        "parameters": [
+          { "$ref": "#/components/parameters/IdPath" },
+          { "name": "force", "in": "query", "schema": { "type": "boolean", "default": false } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Customer deleted",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Customer" } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" },
+          "404": { "$ref": "#/components/responses/NotFoundError" }
+        }
+      }
+    },
+    "/coupons": {
+      "get": {
+        "tags": ["Coupons"],
+        "summary": "List all coupons",
+        "parameters": [
+          { "$ref": "#/components/parameters/PageParam" },
+          { "$ref": "#/components/parameters/PerPageParam" },
+          { "$ref": "#/components/parameters/SearchParam" },
+          { "name": "code", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Coupon" } } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" }
+        }
+      },
+      "post": {
+        "tags": ["Coupons"],
+        "summary": "Create a coupon",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/Coupon" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Coupon created",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Coupon" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequestError" },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" }
+        }
+      }
+    },
+    "/webhooks": {
+      "get": {
+        "tags": ["Webhooks"],
+        "summary": "List all webhooks",
+        "parameters": [
+          { "$ref": "#/components/parameters/PageParam" },
+          { "$ref": "#/components/parameters/PerPageParam" },
+          { "name": "status", "in": "query", "schema": { "type": "string" } },
+          { "name": "topic", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Webhook" } } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" }
+        }
+      },
+      "post": {
+        "tags": ["Webhooks"],
+        "summary": "Create a webhook",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/Webhook" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Webhook created",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Webhook" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequestError" },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" }
+        }
+      }
+    },
+    "/reports": {
+      "get": {
+        "tags": ["Reports"],
+        "summary": "List available reports",
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Report" } } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" }
+        }
+      }
+    },
+    "/reports/sales": {
+      "get": {
+        "tags": ["Reports"],
+        "summary": "Sales report",
+        "parameters": [
+          { "$ref": "#/components/parameters/AfterParam" },
+          { "$ref": "#/components/parameters/BeforeParam" },
+          { "name": "interval", "in": "query", "schema": { "type": "string", "enum": ["day", "week", "month", "year"] } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sales report data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "total_sales": { "type": "string" },
+                    "total_orders": { "type": "integer" },
+                    "totals": { "type": "array", "items": { "type": "object" } }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" }
+        }
+      }
+    },
+    "/plugins": {
+      "get": {
+        "tags": ["Plugins"],
+        "summary": "List all plugins",
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "plugins": { "type": "array", "items": { "$ref": "#/components/schemas/Plugin" } },
+                    "total": { "type": "integer" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" }
+        }
+      }
+    },
+    "/plugins/{id}/activate": {
+      "post": {
+        "tags": ["Plugins"],
+        "summary": "Activate a plugin",
+        "parameters": [{ "$ref": "#/components/parameters/IdPath" }],
+        "responses": {
+          "200": {
+            "description": "Plugin activated",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Plugin" } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" },
+          "404": { "$ref": "#/components/responses/NotFoundError" }
+        }
+      }
+    },
+    "/plugins/{id}/deactivate": {
+      "post": {
+        "tags": ["Plugins"],
+        "summary": "Deactivate a plugin",
+        "parameters": [{ "$ref": "#/components/parameters/IdPath" }],
+        "responses": {
+          "200": {
+            "description": "Plugin deactivated",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Plugin" } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" },
+          "404": { "$ref": "#/components/responses/NotFoundError" }
+        }
+      }
+    }
+  },
+  "tags": [
+    { "name": "Products", "description": "Product management" },
+    { "name": "Orders", "description": "Order management" },
+    { "name": "Customers", "description": "Customer management" },
+    { "name": "Coupons", "description": "Coupon management" },
+    { "name": "Webhooks", "description": "Webhook management" },
+    { "name": "Reports", "description": "Sales and analytics reports" },
+    { "name": "Settings", "description": "Store settings" },
+    { "name": "Shipping", "description": "Shipping zones and methods" },
+    { "name": "Taxes", "description": "Tax rates and classes" },
+    { "name": "Payment Gateways", "description": "Payment gateway settings" },
+    { "name": "Plugins", "description": "Plugin management" },
+    { "name": "Data", "description": "Data export and import" }
+  ]
+}

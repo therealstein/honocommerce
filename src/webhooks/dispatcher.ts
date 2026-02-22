@@ -9,6 +9,7 @@ import { eq, and } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { createHmac } from 'crypto';
 import { queueWebhookDelivery, isQueueEnabled } from '../queue';
+import logger from '../lib/logger';
 
 export interface WebhookPayload {
   topic: string;
@@ -50,11 +51,11 @@ export const dispatchWebhook = async (payload: WebhookPayload): Promise<void> =>
   const subscribers = await getWebhooksForTopic(topic);
   
   if (subscribers.length === 0) {
-    console.log(`No webhooks subscribed to ${topic}`);
+    logger.debug('No webhooks subscribed', { topic });
     return;
   }
   
-  console.log(`Dispatching webhook ${topic} to ${subscribers.length} subscriber(s)`);
+  logger.info('Dispatching webhook', { topic, subscriberCount: subscribers.length });
   
   // Dispatch to each subscriber
   await Promise.all(
@@ -101,7 +102,7 @@ export const deliverWebhook = async (deliveryId: string): Promise<boolean> => {
     .limit(1);
   
   if (!delivery) {
-    console.error(`Delivery not found: ${deliveryId}`);
+    logger.error('Delivery not found', { deliveryId });
     return false;
   }
   
@@ -112,11 +113,11 @@ export const deliverWebhook = async (deliveryId: string): Promise<boolean> => {
     .limit(1);
   
   if (!webhook) {
-    console.error(`Webhook not found: ${delivery.webhookId}`);
+    logger.error('Webhook not found', { webhookId: delivery.webhookId });
     return false;
   }
   
-  console.log(`Delivering webhook ${webhook.id} to ${webhook.deliveryUrl}`);
+  logger.debug('Delivering webhook', { webhookId: webhook.id, url: webhook.deliveryUrl });
   
   try {
     const response = await fetch(webhook.deliveryUrl, {
@@ -140,14 +141,17 @@ export const deliverWebhook = async (deliveryId: string): Promise<boolean> => {
       .where(eq(webhookDeliveries.deliveryId, deliveryId));
     
     if (!response.ok) {
-      console.error(`Webhook delivery failed with status ${response.status}: ${responseBody}`);
+      logger.warn('Webhook delivery failed', { 
+        deliveryId, 
+        status: response.status 
+      });
     }
     
     return response.ok;
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     
-    console.error(`Webhook delivery error: ${errorMessage}`);
+    logger.error('Webhook delivery error', { deliveryId, error: errorMessage });
     
     // Update delivery log with error
     await db

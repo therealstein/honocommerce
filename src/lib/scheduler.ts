@@ -7,6 +7,7 @@ import { db } from '../db';
 import { pluginSchedules } from '../db/schema/plugins';
 import { eq, and } from 'drizzle-orm';
 import type { PluginContext, ScheduleHandler } from '../types/plugin.types';
+import logger from './logger';
 
 // ============== SCHEDULED TASK ==============
 
@@ -46,7 +47,7 @@ class SchedulerManager {
     // Also run immediately
     this.tick();
     
-    console.log('📅 Scheduler started');
+    logger.info('Scheduler started');
   }
 
   /**
@@ -71,7 +72,7 @@ class SchedulerManager {
     
     this.tasks.clear();
     
-    console.log('📅 Scheduler stopped');
+    logger.info('Scheduler stopped');
   }
 
   /**
@@ -118,7 +119,7 @@ class SchedulerManager {
     // Persist to database
     await this.persistSchedule(pluginId, scheduleId, cronExpression, intervalMs, nextRun);
     
-    console.log(`📅 Registered schedule: ${taskId} (${schedule})`);
+    logger.info('Registered schedule', { taskId, schedule });
   }
 
   /**
@@ -143,7 +144,7 @@ class SchedulerManager {
         eq(pluginSchedules.scheduleId, scheduleId)
       ));
     
-    console.log(`📅 Unregistered schedule: ${taskId}`);
+    logger.info('Unregistered schedule', { taskId });
   }
 
   /**
@@ -170,7 +171,7 @@ class SchedulerManager {
       .delete(pluginSchedules)
       .where(eq(pluginSchedules.pluginId, pluginId));
     
-    console.log(`📅 Unregistered all schedules for plugin: ${pluginId}`);
+    logger.info('Unregistered all schedules for plugin', { pluginId });
   }
 
   /**
@@ -269,7 +270,7 @@ class SchedulerManager {
           eq(pluginSchedules.scheduleId, task.scheduleId)
         ));
       
-      console.log(`📅 Executing schedule: ${taskId}`);
+      logger.info('Executing schedule', { taskId });
       
       // Execute handler
       await task.handler(task.context);
@@ -291,7 +292,7 @@ class SchedulerManager {
         ));
       
     } catch (error) {
-      console.error(`📅 Error executing schedule ${taskId}:`, error);
+      logger.error('Error executing schedule', { taskId, error: error instanceof Error ? error.message : String(error) });
       
       // Mark as not running
       await db
@@ -488,7 +489,7 @@ class SchedulerManager {
           ));
       }
     } catch (error) {
-      console.error(`Failed to persist schedule ${pluginId}:${scheduleId}:`, error);
+      logger.error('Failed to persist schedule', { pluginId, scheduleId, error: error instanceof Error ? error.message : String(error) });
     }
   }
 
@@ -498,10 +499,10 @@ class SchedulerManager {
   async restoreSchedules(): Promise<void> {
     try {
       const schedules = await db.select().from(pluginSchedules);
-      console.log(`📅 Found ${schedules.length} persisted schedules`);
+      logger.info('Found persisted schedules', { count: schedules.length });
       // Note: Actual handler restoration requires plugin manager integration
     } catch (error) {
-      console.error('Failed to restore schedules:', error);
+      logger.error('Failed to restore schedules', { error: error instanceof Error ? error.message : String(error) });
     }
   }
 }

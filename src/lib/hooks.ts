@@ -4,6 +4,7 @@
  */
 
 import type { HookCallback, HookRegistration, HookContext } from '../types/plugin.types';
+import logger from './logger';
 
 // ============== HOOK MANAGER ==============
 
@@ -85,7 +86,11 @@ class HookManager {
           currentData = result as T;
         }
       } catch (error) {
-        console.error(`[HookManager] Error executing hook ${hookName} for plugin ${registration.pluginId}:`, error);
+        logger.error('Error executing filter hook', { 
+          hookName, 
+          pluginId: registration.pluginId, 
+          error: error instanceof Error ? error.message : String(error) 
+        });
         // Continue with other hooks even if one fails
       }
     }
@@ -112,7 +117,11 @@ class HookManager {
       try {
         await registration.callback(data, context);
       } catch (error) {
-        console.error(`[HookManager] Error executing action hook ${hookName} for plugin ${registration.pluginId}:`, error);
+        logger.error('Error executing action hook', { 
+          hookName, 
+          pluginId: registration.pluginId, 
+          error: error instanceof Error ? error.message : String(error) 
+        });
         // Continue with other hooks even if one fails
       }
     }

@@ -6,6 +6,7 @@
 import { Context } from 'hono';
 import { wcError, WcErrorCodes, WcError } from '../lib/wc-error';
 import { ZodError } from 'zod';
+import logger from '../lib/logger';
 
 /**
  * Check if an error is a WooCommerce error
@@ -34,7 +35,7 @@ const formatZodErrors = (error: ZodError): string => {
  * Formats all errors as WooCommerce-compatible JSON responses
  */
 export const errorHandler = (err: Error, c: Context) => {
-  console.error('Error:', err);
+  logger.error('Request error', { error: err.message, stack: err.stack });
   
   // If it's already a WooCommerce-formatted error, return it
   if (isWcError(err)) {

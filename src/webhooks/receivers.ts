@@ -4,6 +4,7 @@
  */
 
 import { Hono } from 'hono';
+import logger from '../lib/logger';
 
 const router = new Hono();
 
@@ -18,7 +19,7 @@ router.post('/receive/:source', async (c) => {
   // TODO: Implement webhook verification per source
   // TODO: Process webhook payload
   
-  console.log(`Received webhook from ${source}:`, body);
+  logger.info('Received webhook', { source, body });
   
   return c.json({ received: true, source }, 200);
 });
@@ -34,7 +35,7 @@ router.post('/stripe', async (c) => {
   // TODO: Verify Stripe signature
   // TODO: Process Stripe event
   
-  console.log('Received Stripe webhook:', { signature, body });
+  logger.info('Received Stripe webhook', { signature });
   
   return c.json({ received: true }, 200);
 });
@@ -49,7 +50,7 @@ router.post('/paypal', async (c) => {
   // TODO: Verify PayPal signature
   // TODO: Process PayPal event
   
-  console.log('Received PayPal webhook:', body);
+  logger.info('Received PayPal webhook', { body });
   
   return c.json({ received: true }, 200);
 });

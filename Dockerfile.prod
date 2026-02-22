@@ -1,0 +1,63 @@
+# ===========================================
+# Production Dockerfile for Honocommerce
+# Multi-stage build for minimal image size
+# ===========================================
+
+# Stage 1: Build
+FROM oven/bun:1 AS builder
+
+WORKDIR /app
+
+# Copy package files first for better caching
+COPY package.json bun.lockb* ./
+
+# Install dependencies
+RUN bun install --frozen-lockfile --production=false
+
+# Copy source code
+COPY tsconfig.json ./
+COPY drizzle.config.ts ./
+COPY src ./src
+
+# Build the application
+RUN bun build src/index.ts --outdir dist --target bun --minify
+
+# Stage 2: Production
+FROM oven/bun:1-slim AS production
+
+WORKDIR /app
+
+# Create non-root user for security
+RUN addgroup --system --gid 1001 honocommerce && \
+    adduser --system --uid 1001 --ingroup honocommerce honocommerce
+
+# Copy only production dependencies
+COPY package.json bun.lockb* ./
+RUN bun install --frozen-lockfile --production && \
+    bun cache rm
+
+# Copy built application
+COPY --from=builder /app/dist ./dist
+COPY drizzle.config.ts ./
+
+# Set ownership to non-root user
+RUN chown -R honocommerce:honocommerce /app
+
+# Switch to non-root user
+USER honocommerce
+
+# Environment defaults
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV LOG_FORMAT=json
+ENV LOG_LEVEL=info
+
+# Expose port
+EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:3000/health || exit 1
+
+# Start the application
+CMD ["bun", "run", "dist/index.js"]

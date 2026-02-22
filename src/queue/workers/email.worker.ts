@@ -10,6 +10,7 @@ import {
   isQueueEnabled,
   registerMemoryWorker,
 } from '../index';
+import logger from '../../lib/logger';
 
 interface EmailJobData {
   type: string;
@@ -20,6 +21,9 @@ interface EmailJobData {
 }
 
 let worker: Worker<EmailJobData> | null = null;
+
+// Counter for simulated emails (for memory queue)
+let emailCounter = 0;
 
 /**
  * Process email job
@@ -35,10 +39,7 @@ let worker: Worker<EmailJobData> | null = null;
 const processEmail = async (data: EmailJobData): Promise<void> => {
   const { to, subject, template, type } = data;
   
-  console.log(`📧 Email [${type}]`);
-  console.log(`   To: ${to}`);
-  console.log(`   Subject: ${subject}`);
-  console.log(`   Template: ${template ?? 'none'}`);
+  logger.info('Processing email', { type, to, subject, template });
   
   // TODO: Integrate with email service
   // Example:
@@ -48,24 +49,25 @@ const processEmail = async (data: EmailJobData): Promise<void> => {
   //   await ses.sendEmail({ to, subject, body });
   // }
   
-  console.log(`   ✅ Email sent (simulated)`);
+  emailCounter++;
 };
 
 /**
  * Start the email worker
  */
 export const startEmailWorker = (): void => {
-  // Always register handler for memory queue fallback
   registerMemoryWorker(QUEUE_NAMES.EMAIL, async (data) => {
     try {
       await processEmail(data as EmailJobData);
     } catch (error) {
-      console.error('Memory queue email failed:', error);
+      logger.error('Memory queue email failed', { 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      });
     }
   });
 
   if (!isQueueEnabled() || !connection) {
-    console.log('📦 Email worker using in-memory queue');
+    logger.info('Email worker started', { backend: 'memory' });
     return;
   }
 
@@ -81,20 +83,22 @@ export const startEmailWorker = (): void => {
     }
   );
 
-  // Event handlers
   worker.on('completed', (job) => {
-    console.log(`✅ Email sent: ${job.id}`);
+    logger.info('Email sent', { jobId: job.id, to: job.data.to });
   });
 
   worker.on('failed', (job, err) => {
-    console.error(`❌ Email failed: ${job?.id}`, err.message);
+    logger.error('Email failed', { 
+      jobId: job?.id, 
+      error: err.message 
+    });
   });
 
   worker.on('error', (err) => {
-    console.error('Email worker error:', err);
+    logger.error('Email worker error', { error: err.message });
   });
 
-  console.log('🔄 Email worker started (Redis)');
+  logger.info('Email worker started', { backend: 'redis' });
 };
 
 /**
@@ -104,11 +108,17 @@ export const stopEmailWorker = async (): Promise<void> => {
   if (worker) {
     await worker.close();
     worker = null;
-    console.log('Email worker stopped');
+    logger.info('Email worker stopped');
   }
 };
+
+/**
+ * Get email counter (for testing)
+ */
+export const getEmailCounter = (): number => emailCounter;
 
 export default {
   start: startEmailWorker,
   stop: stopEmailWorker,
+  getEmailCounter,
 };

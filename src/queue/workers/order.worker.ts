@@ -24,6 +24,7 @@ import { coupons } from '../../db/schema/coupons';
 import { customers } from '../../db/schema/customers';
 import { eq, and, sql } from 'drizzle-orm';
 import { dispatchWebhook } from '../../webhooks/dispatcher';
+import logger from '../../lib/logger';
 
 interface OrderJobData {
   orderId: number;
@@ -54,7 +55,7 @@ const reduceInventory = async (orderId: number): Promise<void> => {
         })
         .where(eq(products.id, item.productId));
       
-      console.log(`   📦 Reduced stock for product ${item.productId} by ${item.quantity}`);
+      logger.debug('Stock reduced', { orderId, productId: item.productId, quantity: item.quantity });
     }
   }
 };
@@ -79,7 +80,7 @@ const restoreInventory = async (orderId: number): Promise<void> => {
         })
         .where(eq(products.id, item.productId));
       
-      console.log(`   📦 Restored stock for product ${item.productId} by ${item.quantity}`);
+      logger.debug('Stock restored', { orderId, productId: item.productId, quantity: item.quantity });
     }
   }
 };
@@ -88,7 +89,6 @@ const restoreInventory = async (orderId: number): Promise<void> => {
  * Increment coupon usage
  */
 const incrementCouponUsage = async (orderId: number): Promise<void> => {
-  // Get coupon lines from the separate table
   const couponLines = await db
     .select()
     .from(orderCouponLines)
@@ -105,7 +105,7 @@ const incrementCouponUsage = async (orderId: number): Promise<void> => {
       })
       .where(eq(coupons.code, couponLine.code));
     
-    console.log(`   🎟️  Incremented coupon usage: ${couponLine.code}`);
+    logger.debug('Coupon usage incremented', { orderId, couponCode: couponLine.code });
   }
 };
 
@@ -121,7 +121,6 @@ const updateCustomerStats = async (orderId: number): Promise<void> => {
 
   if (!order || !order.customerId) return;
 
-  // Update customer's total spent
   await db
     .update(customers)
     .set({
@@ -130,7 +129,7 @@ const updateCustomerStats = async (orderId: number): Promise<void> => {
     })
     .where(eq(customers.id, order.customerId));
   
-  console.log(`   👤 Updated customer ${order.customerId} as paying customer`);
+  logger.debug('Customer stats updated', { orderId, customerId: order.customerId });
 };
 
 /**
@@ -155,7 +154,7 @@ const dispatchOrderWebhook = async (
     data: order,
   });
   
-  console.log(`   🪝 Dispatched webhook: order.${event}`);
+  logger.debug('Webhook dispatched', { orderId, event: `order.${event}` });
 };
 
 /**
@@ -181,7 +180,7 @@ const queueOrderEmail = async (
   const email = customer?.email ?? billing?.email;
   
   if (!email) {
-    console.log(`   ⚠️  No email for order ${orderId}`);
+    logger.warn('No email for order notification', { orderId });
     return;
   }
 
@@ -203,20 +202,19 @@ const queueOrderEmail = async (
     data: { orderId, order },
   });
   
-  console.log(`   📧 Queued email: ${type}`);
+  logger.debug('Email queued', { orderId, type, to: email });
 };
 
 /**
  * Process order job
  */
 const processOrder = async (data: OrderJobData): Promise<void> => {
-  const { orderId, type, oldStatus, newStatus } = data;
+  const { orderId, type, newStatus } = data;
   
-  console.log(`📦 Processing order ${orderId}: ${type}`);
+  logger.info('Processing order', { orderId, type, newStatus });
 
   switch (type) {
     case 'created':
-      // New order - reduce inventory
       await reduceInventory(orderId);
       await incrementCouponUsage(orderId);
       await updateCustomerStats(orderId);
@@ -225,7 +223,6 @@ const processOrder = async (data: OrderJobData): Promise<void> => {
       break;
 
     case 'status_changed':
-      // Status changed - handle based on new status
       if (newStatus === 'completed') {
         await dispatchOrderWebhook(orderId, 'updated');
         await queueOrderEmail(orderId, 'completed');
@@ -267,17 +264,18 @@ const processOrder = async (data: OrderJobData): Promise<void> => {
  * Start the order worker
  */
 export const startOrderWorker = (): void => {
-  // Always register handler for memory queue fallback
   registerMemoryWorker(QUEUE_NAMES.ORDER, async (data) => {
     try {
       await processOrder(data as OrderJobData);
     } catch (error) {
-      console.error('Memory queue order processing failed:', error);
+      logger.error('Memory queue order processing failed', { 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      });
     }
   });
 
   if (!isQueueEnabled() || !connection) {
-    console.log('📦 Order worker using in-memory queue');
+    logger.info('Order worker started', { backend: 'memory' });
     return;
   }
 
@@ -293,20 +291,22 @@ export const startOrderWorker = (): void => {
     }
   );
 
-  // Event handlers
   worker.on('completed', (job) => {
-    console.log(`✅ Order processed: ${job.data.orderId}`);
+    logger.info('Order processed', { orderId: job.data.orderId });
   });
 
   worker.on('failed', (job, err) => {
-    console.error(`❌ Order processing failed: ${job?.data?.orderId}`, err.message);
+    logger.error('Order processing failed', { 
+      orderId: job?.data?.orderId, 
+      error: err.message 
+    });
   });
 
   worker.on('error', (err) => {
-    console.error('Order worker error:', err);
+    logger.error('Order worker error', { error: err.message });
   });
 
-  console.log('🔄 Order worker started (Redis)');
+  logger.info('Order worker started', { backend: 'redis' });
 };
 
 /**
@@ -316,7 +316,7 @@ export const stopOrderWorker = async (): Promise<void> => {
   if (worker) {
     await worker.close();
     worker = null;
-    console.log('Order worker stopped');
+    logger.info('Order worker stopped');
   }
 };
 

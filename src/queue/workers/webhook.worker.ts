@@ -11,6 +11,7 @@ import {
   registerMemoryWorker,
 } from '../index';
 import { deliverWebhook } from '../../webhooks/dispatcher';
+import logger from '../../lib/logger';
 
 interface WebhookJobData {
   deliveryId: string;
@@ -26,7 +27,7 @@ let worker: Worker<WebhookJobData> | null = null;
 const processWebhookDelivery = async (data: WebhookJobData): Promise<void> => {
   const { deliveryId } = data;
   
-  console.log(`🔗 Processing webhook delivery: ${deliveryId}`);
+  logger.debug('Processing webhook delivery', { deliveryId });
   
   const success = await deliverWebhook(deliveryId);
   
@@ -39,17 +40,18 @@ const processWebhookDelivery = async (data: WebhookJobData): Promise<void> => {
  * Start the webhook worker
  */
 export const startWebhookWorker = (): void => {
-  // Always register handler for memory queue fallback
   registerMemoryWorker(QUEUE_NAMES.WEBHOOK, async (data) => {
     try {
       await processWebhookDelivery(data as WebhookJobData);
     } catch (error) {
-      console.error('Memory queue webhook failed:', error);
+      logger.error('Memory queue webhook failed', { 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      });
     }
   });
 
   if (!isQueueEnabled() || !connection) {
-    console.log('📦 Webhook worker using in-memory queue');
+    logger.info('Webhook worker started', { backend: 'memory' });
     return;
   }
 
@@ -69,20 +71,22 @@ export const startWebhookWorker = (): void => {
     }
   );
 
-  // Event handlers
   worker.on('completed', (job) => {
-    console.log(`✅ Webhook delivery completed: ${job.id}`);
+    logger.info('Webhook delivered', { deliveryId: job.data.deliveryId });
   });
 
   worker.on('failed', (job, err) => {
-    console.error(`❌ Webhook delivery failed: ${job?.id}`, err.message);
+    logger.error('Webhook delivery failed', { 
+      deliveryId: job?.data?.deliveryId, 
+      error: err.message 
+    });
   });
 
   worker.on('error', (err) => {
-    console.error('Webhook worker error:', err);
+    logger.error('Webhook worker error', { error: err.message });
   });
 
-  console.log('🔄 Webhook worker started (Redis)');
+  logger.info('Webhook worker started', { backend: 'redis' });
 };
 
 /**
@@ -92,7 +96,7 @@ export const stopWebhookWorker = async (): Promise<void> => {
   if (worker) {
     await worker.close();
     worker = null;
-    console.log('Webhook worker stopped');
+    logger.info('Webhook worker stopped');
   }
 };
 

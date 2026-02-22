@@ -8,6 +8,7 @@
 
 import { Queue, Worker, QueueEvents } from 'bullmq';
 import IORedis from 'ioredis';
+import logger from '../lib/logger';
 
 // Check if Redis URL is configured
 const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
@@ -42,7 +43,7 @@ let orderQueueEvents: QueueEvents | null = null;
  * Initialize in-memory queue fallback
  */
 const initializeMemoryQueue = (): void => {
-  console.log('📦 In-memory queue initialized (no persistence)');
+  logger.info('In-memory queue initialized', { persistence: false });
   
   // Initialize memory queues
   Object.values(QUEUE_NAMES).forEach(name => {
@@ -58,7 +59,10 @@ const initializeMemoryQueue = (): void => {
           try {
             await job.handler(job.data);
           } catch (error) {
-            console.error(`Memory queue job failed [${queueName}]:`, error);
+            logger.error('Memory queue job failed', { 
+              queue: queueName, 
+              error: error instanceof Error ? error.message : 'Unknown error' 
+            });
           }
         }
       }
@@ -77,7 +81,7 @@ const addToMemoryQueue = async (
   let queue = memoryQueues.get(queueName);
   
   if (!handler) {
-    console.warn(`No worker registered for queue: ${queueName}`);
+    logger.warn('No worker registered for queue', { queue: queueName });
     return;
   }
   
@@ -141,7 +145,7 @@ export const getQueueStats = async () => {
  * Initialize queue system
  */
 export const initializeQueues = async (): Promise<void> => {
-  console.log(`🔄 Connecting to Redis at ${redisUrl}...`);
+  logger.info('Connecting to Redis', { url: redisUrl.replace(/\/\/[^:]+:/, '//***:') });
   
   try {
     // Create Redis connection
@@ -161,7 +165,7 @@ export const initializeQueues = async (): Promise<void> => {
     }
     
     isRedisConnected = true;
-    console.log('✅ Redis connected - Queue system using Redis');
+    logger.info('Redis connected', { backend: 'redis' });
 
     // Create queues
     webhookQueue = new Queue(QUEUE_NAMES.WEBHOOK, { connection });
@@ -175,18 +179,17 @@ export const initializeQueues = async (): Promise<void> => {
 
     // Handle connection errors after initial connection
     connection.on('error', (err) => {
-      console.error('Redis error:', err.message);
+      logger.error('Redis error', { error: err.message });
     });
 
     connection.on('close', () => {
-      console.warn('Redis connection closed');
+      logger.warn('Redis connection closed');
       isRedisConnected = false;
     });
 
   } catch (error) {
     const err = error as Error;
-    console.warn(`⚠️  Redis unavailable: ${err.message}`);
-    console.log('📦 Falling back to in-memory queue');
+    logger.warn('Redis unavailable, using in-memory queue', { error: err.message });
     
     // Clean up failed connection
     if (connection) {
@@ -267,7 +270,7 @@ export const queueOrderProcessing = async (
  * Graceful shutdown
  */
 export const shutdownQueues = async (): Promise<void> => {
-  console.log('Shutting down queues...');
+  logger.info('Shutting down queues');
 
   // Stop memory queue interval
   if (memoryQueueInterval) {
@@ -288,7 +291,7 @@ export const shutdownQueues = async (): Promise<void> => {
     await connection.quit();
   }
 
-  console.log('Queues shut down complete');
+  logger.info('Queues shut down complete');
 };
 
 export {

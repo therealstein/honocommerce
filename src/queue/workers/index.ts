@@ -10,12 +10,13 @@ export { startOrderWorker, stopOrderWorker } from './order.worker';
 import { startWebhookWorker, stopWebhookWorker } from './webhook.worker';
 import { startEmailWorker, stopEmailWorker } from './email.worker';
 import { startOrderWorker, stopOrderWorker } from './order.worker';
+import logger from '../../lib/logger';
 
 /**
  * Start all workers
  */
 export const startAllWorkers = (): void => {
-  console.log('Starting queue workers...');
+  logger.info('Starting queue workers');
   startWebhookWorker();
   startEmailWorker();
   startOrderWorker();
@@ -25,7 +26,7 @@ export const startAllWorkers = (): void => {
  * Stop all workers
  */
 export const stopAllWorkers = async (): Promise<void> => {
-  console.log('Stopping queue workers...');
+  logger.info('Stopping queue workers');
   await Promise.all([
     stopWebhookWorker(),
     stopEmailWorker(),

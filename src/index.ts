@@ -4,13 +4,15 @@
  */
 
 import { Hono } from 'hono';
-import { logger } from 'hono/logger';
 import { cors } from 'hono/cors';
 
 // Import middleware
 import { authMiddleware } from './middleware/auth';
 import { errorHandler } from './middleware/error-handler';
 import { rateLimiter } from './middleware/rate-limit';
+import { requestId } from './middleware/request-id';
+import { requestLogger } from './middleware/request-logger';
+import { apiSecurityHeaders } from './middleware/security-headers';
 
 // Import routes
 import productsRouter from './routes/products';
@@ -32,17 +34,41 @@ import { startAllWorkers, stopAllWorkers } from './queue/workers';
 
 // Import plugin system
 import { initializePluginSystem, shutdownPluginSystem } from './services/plugin.service';
-import { doAction } from './lib/hooks';
+
+// Import logging and metrics
+import logger from './lib/logger';
+import { getMetricsExport } from './lib/metrics';
 
 const app = new Hono();
 
-// Global middleware
-app.use('*', logger());
-app.use('*', cors());
+// ============== GLOBAL MIDDLEWARE ==============
+
+// Request ID (must be first for logging)
+app.use('*', requestId());
+
+// Request logging
+app.use('*', requestLogger());
+
+// Security headers
+app.use('*', apiSecurityHeaders());
+
+// CORS
+const corsOrigins = process.env.CORS_ORIGINS ?? '*';
+app.use('*', cors({
+  origin: corsOrigins === '*' ? '*' : corsOrigins.split(',').map(s => s.trim()),
+  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowHeaders: ['Content-Type', 'Authorization'],
+  exposeHeaders: ['X-Request-ID', 'X-WP-Total', 'X-WP-TotalPages'],
+  maxAge: 86400,
+}));
+
+// Rate limiting
 app.use('*', rateLimiter);
 
 // Error handler
 app.onError(errorHandler);
+
+// ============== PUBLIC ENDPOINTS ==============
 
 // Health check (no auth required)
 app.get('/health', async (c) => {
@@ -52,10 +78,25 @@ app.get('/health', async (c) => {
     status: 'ok', 
     timestamp: new Date().toISOString(),
     queue: queueStats,
+    version: process.env.npm_package_version ?? '1.0.0',
   });
 });
 
-// API routes under /wp-json/wc/v3
+// Prometheus metrics endpoint (optional, controlled by env)
+const metricsEnabled = process.env.METRICS_ENABLED !== 'false';
+const metricsPath = process.env.METRICS_PATH ?? '/metrics';
+
+if (metricsEnabled) {
+  app.get(metricsPath, async (c) => {
+    const metrics = getMetricsExport();
+    return c.text(metrics, 200, {
+      'Content-Type': 'text/plain; version=0.0.4; charset=utf-8',
+    });
+  });
+}
+
+// ============== API ROUTES ==============
+
 const api = new Hono();
 api.use('*', authMiddleware);
 
@@ -76,21 +117,21 @@ api.route('/plugins', pluginsRouter);
 // Mount API at WooCommerce-compatible path
 app.route('/wp-json/wc/v3', api);
 
-// Start server
+// ============== SERVER STARTUP ==============
+
 const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
-console.log(`🚀 Honocommerce server running on port ${port}`);
-console.log(`📡 API available at http://localhost:${port}/wp-json/wc/v3`);
+logger.info('Starting Honocommerce server', { port });
 
 // Initialize queue system and start workers
 const initializeApp = async () => {
   // Skip queue initialization in test environment
   if (process.env.NODE_ENV === 'test') {
-    console.log('🧪 Test environment - skipping queue initialization');
+    logger.info('Test environment - skipping queue initialization');
     return;
   }
   
-  console.log('🔄 Initializing queue system...');
+  logger.info('Initializing queue system...');
   
   // Initialize queues (connects to Redis or sets up memory fallback)
   await initializeQueues();
@@ -99,24 +140,25 @@ const initializeApp = async () => {
   startAllWorkers();
   
   if (isQueueEnabled()) {
-    console.log('✅ Queue system enabled (Redis connected)');
+    logger.info('Queue system enabled', { backend: 'redis' });
   } else {
-    console.log('📦 Queue system using in-memory fallback');
+    logger.warn('Queue system using in-memory fallback');
   }
 
   // Initialize plugin system
-  console.log('🔌 Initializing plugin system...');
+  logger.info('Initializing plugin system...');
   await initializePluginSystem();
 };
 
 // Start initialization
 initializeApp().catch(err => {
-  console.error('Failed to initialize queue system:', err);
+  logger.error('Failed to initialize application', { error: err.message });
 });
 
-// Graceful shutdown
+// ============== GRACEFUL SHUTDOWN ==============
+
 const gracefulShutdown = async (signal: string) => {
-  console.log(`\n${signal} received, shutting down gracefully...`);
+  logger.info('Shutting down', { signal });
   
   // Shutdown plugin system
   await shutdownPluginSystem();
@@ -127,7 +169,7 @@ const gracefulShutdown = async (signal: string) => {
   // Close queue connections
   await shutdownQueues();
   
-  console.log('Goodbye!');
+  logger.info('Shutdown complete');
   process.exit(0);
 };
 

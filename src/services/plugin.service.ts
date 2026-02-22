@@ -17,6 +17,7 @@ import type {
 } from '../types/plugin.types';
 import { hookManager, unregisterPluginHooks } from '../lib/hooks';
 import { schedulerManager, unregisterPluginSchedules } from '../lib/scheduler';
+import logger from '../lib/logger';
 
 // ============== PLUGIN REGISTRY ==============
 
@@ -32,7 +33,7 @@ class PluginManager {
    * Initialize the plugin system
    */
   async initialize(): Promise<void> {
-    console.log('🔌 Initializing plugin system...');
+    logger.info('Initializing plugin system');
     
     // Start the scheduler
     schedulerManager.start();
@@ -43,19 +44,19 @@ class PluginManager {
       .from(plugins)
       .where(eq(plugins.status, 'active'));
     
-    console.log(`🔌 Found ${activePlugins.length} active plugins in database`);
+    logger.info('Found active plugins', { count: activePlugins.length });
     
     // Restore schedules
     await schedulerManager.restoreSchedules();
     
-    console.log('🔌 Plugin system initialized');
+    logger.info('Plugin system initialized');
   }
 
   /**
    * Shutdown the plugin system
    */
   async shutdown(): Promise<void> {
-    console.log('🔌 Shutting down plugin system...');
+    logger.info('Shutting down plugin system');
     
     // Deactivate all plugins
     for (const [pluginId] of pluginRegistry) {
@@ -68,7 +69,7 @@ class PluginManager {
     // Clear registry
     pluginRegistry.clear();
     
-    console.log('🔌 Plugin system shut down');
+    logger.info('Plugin system shut down');
   }
 
   /**
@@ -77,7 +78,7 @@ class PluginManager {
   registerPlugin(plugin: Plugin): void {
     const pluginId = plugin.manifest.id;
     pluginRegistry.set(pluginId, plugin);
-    console.log(`🔌 Registered plugin: ${pluginId}`);
+    logger.debug('Plugin registered', { pluginId });
   }
 
   /**
@@ -85,7 +86,7 @@ class PluginManager {
    */
   unregisterPlugin(pluginId: string): void {
     pluginRegistry.delete(pluginId);
-    console.log(`🔌 Unregistered plugin: ${pluginId}`);
+    logger.debug('Plugin unregistered', { pluginId });
   }
 
   /**
@@ -133,7 +134,7 @@ class PluginManager {
       dateModified: now,
     });
     
-    console.log(`🔌 Installed plugin: ${pluginId} v${manifest.version}`);
+    logger.info('Plugin installed', { pluginId, version: manifest.version });
     
     return this.getPluginState(pluginId) as Promise<PluginState>;
   }
@@ -202,7 +203,7 @@ class PluginManager {
         })
         .where(eq(plugins.id, pluginId));
       
-      console.log(`🔌 Activated plugin: ${pluginId}`);
+      logger.info('Plugin activated', { pluginId });
       
     } catch (error) {
       // Update error
@@ -260,7 +261,7 @@ class PluginManager {
         })
         .where(eq(plugins.id, pluginId));
       
-      console.log(`🔌 Deactivated plugin: ${pluginId}`);
+      logger.info('Plugin deactivated', { pluginId });
       
     } catch (error) {
       await db
@@ -309,7 +310,7 @@ class PluginManager {
       await db.delete(plugins).where(eq(plugins.id, pluginId));
       await db.delete(pluginSettings).where(eq(pluginSettings.pluginId, pluginId));
       
-      console.log(`🔌 Uninstalled plugin: ${pluginId}`);
+      logger.info('Plugin uninstalled', { pluginId });
       
     } catch (error) {
       throw new Error(`Failed to uninstall plugin ${pluginId}: ${error instanceof Error ? error.message : 'Unknown error'}`);
