@@ -3,7 +3,10 @@
  * Re-export all schema files for easy imports
  */
 
-// API Keys
+// Better Auth (admin users, sessions, API keys)
+export * from './better-auth';
+
+// API Keys (legacy WooCommerce keys)
 export * from './api-keys';
 
 // Products

@@ -27,6 +27,7 @@ import taxesRouter from './routes/taxes';
 import paymentGatewaysRouter from './routes/payment-gateways';
 import dataRouter from './routes/data';
 import pluginsRouter from './routes/plugins';
+import adminRouter from './routes/admin';
 
 // Import queue system
 import { initializeQueues, isQueueEnabled, getQueueStats, shutdownQueues } from './queue';
@@ -34,6 +35,10 @@ import { startAllWorkers, stopAllWorkers } from './queue/workers';
 
 // Import plugin system
 import { initializePluginSystem, shutdownPluginSystem } from './services/plugin.service';
+
+// Import better-auth
+import { auth } from './lib/auth';
+import { initializeRedis, closeRedis } from './lib/redis';
 
 // Import logging and metrics
 import logger from './lib/logger';
@@ -60,6 +65,7 @@ app.use('*', cors({
   allowHeaders: ['Content-Type', 'Authorization'],
   exposeHeaders: ['X-Request-ID', 'X-WP-Total', 'X-WP-TotalPages'],
   maxAge: 86400,
+  credentials: true, // Required for cookies
 }));
 
 // Rate limiting
@@ -95,7 +101,20 @@ if (metricsEnabled) {
   });
 }
 
-// ============== API ROUTES ==============
+// ============== BETTER-AUTH HANDLER ==============
+
+// Mount better-auth handler for admin authentication
+// Handles: /api/auth/sign-in, /api/auth/sign-up, /api/auth/sign-out, /api/auth/session
+app.on(['POST', 'GET'], '/api/auth/*', (c) => {
+  return auth.handler(c.req.raw);
+});
+
+// ============== ADMIN ROUTES ==============
+
+// Mount admin routes (protected by better-auth session)
+app.route('/admin', adminRouter);
+
+// ============== WOOCOMMERCE API ROUTES ==============
 
 const api = new Hono();
 api.use('*', authMiddleware);
@@ -127,8 +146,17 @@ logger.info('Starting Honocommerce server', { port });
 const initializeApp = async () => {
   // Skip queue initialization in test environment
   if (process.env.NODE_ENV === 'test') {
-    logger.info('Test environment - skipping queue initialization');
+    logger.info('Test environment - skipping initialization');
     return;
+  }
+  
+  // Initialize Redis for better-auth (optional but recommended)
+  logger.info('Initializing Redis for auth...');
+  const redisConnected = await initializeRedis();
+  if (redisConnected) {
+    logger.info('Redis connected for auth');
+  } else {
+    logger.warn('Redis not available for auth - using database only');
   }
   
   logger.info('Initializing queue system...');
@@ -148,6 +176,16 @@ const initializeApp = async () => {
   // Initialize plugin system
   logger.info('Initializing plugin system...');
   await initializePluginSystem();
+  
+  logger.info('Honocommerce initialized', {
+    endpoints: {
+      auth: '/api/auth/*',
+      admin: '/admin/*',
+      api: '/wp-json/wc/v3/*',
+      health: '/health',
+      metrics: metricsEnabled ? metricsPath : 'disabled',
+    },
+  });
 };
 
 // Start initialization
@@ -168,6 +206,9 @@ const gracefulShutdown = async (signal: string) => {
   
   // Close queue connections
   await shutdownQueues();
+  
+  // Close Redis for auth
+  await closeRedis();
   
   logger.info('Shutdown complete');
   process.exit(0);

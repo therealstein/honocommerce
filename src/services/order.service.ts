@@ -147,6 +147,7 @@ export const getOrderRefunds = async (orderId: number): Promise<OrderRefund[]> =
 
 /**
  * Process line items for an order
+ * Calculates subtotal/total from product price if not provided
  */
 const processLineItems = async (orderId: number, lineItems: LineItemInput[]): Promise<OrderItem[]> => {
   const items: OrderItem[] = [];
@@ -159,16 +160,24 @@ const processLineItems = async (orderId: number, lineItems: LineItemInput[]): Pr
       .where(eq(products.id, item.product_id))
       .limit(1);
     
+    const quantity = item.quantity ?? 1;
+    const productPrice = product?.price ? parseFloat(product.price) : 0;
+    
+    // Calculate subtotal and total from product price if not provided
+    // This ensures order totals are calculated even when only product_id + quantity are sent
+    const subtotal = item.subtotal ?? (productPrice * quantity).toFixed(2);
+    const total = item.total ?? (productPrice * quantity).toFixed(2);
+    
     const newItem: NewOrderItem = {
       orderId,
       name: item.name ?? product?.name ?? 'Unknown Product',
       productId: item.product_id,
       variationId: item.variation_id ?? 0,
-      quantity: item.quantity ?? 1,
+      quantity,
       taxClass: item.tax_class ?? '',
-      subtotal: item.subtotal ?? '0.00',
+      subtotal,
       subtotalTax: item.subtotal_tax ?? '0.00',
-      total: item.total ?? '0.00',
+      total,
       totalTax: item.total_tax ?? '0.00',
       sku: item.sku ?? product?.sku ?? null,
       price: item.price?.toString() ?? product?.price ?? null,
