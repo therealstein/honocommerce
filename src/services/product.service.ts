@@ -4,11 +4,37 @@
  */
 
 import { db } from '../db';
-import { products, type Product, type NewProduct } from '../db/schema/products';
+import { products, productCategories, productTags, productImages, type Product, type NewProduct, type ProductImage } from '../db/schema/products';
+import { categories } from '../db/schema/product-categories';
+import { tags } from '../db/schema/product-tags';
+import { productVariations } from '../db/schema/product-variations';
 import { eq, and, desc, asc, sql, like, inArray } from 'drizzle-orm';
 import type { PaginationResult } from '../lib/pagination';
 import { createPaginationResult } from '../lib/pagination';
 import type { CreateProductInput, UpdateProductInput, ProductListQuery } from '../validators/product.validators';
+
+// Types for related data
+export interface ProductCategory {
+  id: number;
+  name: string;
+  slug: string;
+}
+
+export interface ProductTag {
+  id: number;
+  name: string;
+  slug: string;
+}
+
+export interface ProductImageResponse {
+  id: number;
+  productId: number;
+  src: string;
+  name: string;
+  alt: string;
+  position: number;
+  dateCreated: Date | null;
+}
 
 /**
  * Generate a URL-friendly slug from a name
@@ -380,6 +406,200 @@ export const batchDeleteProducts = async (
   return results;
 };
 
+// ==================== RELATED DATA METHODS ====================
+
+/**
+ * Get categories for a single product
+ */
+export const getProductCategories = async (productId: number): Promise<ProductCategory[]> => {
+  const result = await db
+    .select({ id: categories.id, name: categories.name, slug: categories.slug })
+    .from(productCategories)
+    .innerJoin(categories, eq(productCategories.categoryId, categories.id))
+    .where(eq(productCategories.productId, productId));
+  
+  return result;
+};
+
+/**
+ * Get tags for a single product
+ */
+export const getProductTags = async (productId: number): Promise<ProductTag[]> => {
+  const result = await db
+    .select({ id: tags.id, name: tags.name, slug: tags.slug })
+    .from(productTags)
+    .innerJoin(tags, eq(productTags.tagId, tags.id))
+    .where(eq(productTags.productId, productId));
+  
+  return result;
+};
+
+/**
+ * Get images for a single product
+ */
+export const getProductImages = async (productId: number): Promise<ProductImageResponse[]> => {
+  const result = await db
+    .select()
+    .from(productImages)
+    .where(eq(productImages.productId, productId))
+    .orderBy(asc(productImages.position));
+  
+  return result.map(img => ({
+    id: img.id,
+    productId: img.productId,
+    src: img.src,
+    name: img.name ?? '',
+    alt: img.alt ?? '',
+    position: img.position,
+    dateCreated: img.dateCreated,
+  }));
+};
+
+/**
+ * Get variation IDs for a single product
+ */
+export const getProductVariationIds = async (productId: number): Promise<number[]> => {
+  const result = await db
+    .select({ id: productVariations.id })
+    .from(productVariations)
+    .where(eq(productVariations.parentId, productId));
+  
+  return result.map(v => v.id);
+};
+
+// ==================== BATCH RELATED DATA METHODS ====================
+
+/**
+ * Batch get categories for multiple products
+ * Returns a Map of productId -> categories[]
+ */
+export const batchGetProductCategories = async (productIds: number[]): Promise<Map<number, ProductCategory[]>> => {
+  if (productIds.length === 0) return new Map();
+  
+  const result = await db
+    .select({
+      productId: productCategories.productId,
+      categoryId: categories.id,
+      name: categories.name,
+      slug: categories.slug,
+    })
+    .from(productCategories)
+    .innerJoin(categories, eq(productCategories.categoryId, categories.id))
+    .where(inArray(productCategories.productId, productIds));
+  
+  const map = new Map<number, ProductCategory[]>();
+  for (const row of result) {
+    const existing = map.get(row.productId) ?? [];
+    existing.push({ id: row.categoryId, name: row.name, slug: row.slug });
+    map.set(row.productId, existing);
+  }
+  
+  // Ensure all product IDs have entries
+  for (const id of productIds) {
+    if (!map.has(id)) map.set(id, []);
+  }
+  
+  return map;
+};
+
+/**
+ * Batch get tags for multiple products
+ * Returns a Map of productId -> tags[]
+ */
+export const batchGetProductTags = async (productIds: number[]): Promise<Map<number, ProductTag[]>> => {
+  if (productIds.length === 0) return new Map();
+  
+  const result = await db
+    .select({
+      productId: productTags.productId,
+      tagId: tags.id,
+      name: tags.name,
+      slug: tags.slug,
+    })
+    .from(productTags)
+    .innerJoin(tags, eq(productTags.tagId, tags.id))
+    .where(inArray(productTags.productId, productIds));
+  
+  const map = new Map<number, ProductTag[]>();
+  for (const row of result) {
+    const existing = map.get(row.productId) ?? [];
+    existing.push({ id: row.tagId, name: row.name, slug: row.slug });
+    map.set(row.productId, existing);
+  }
+  
+  // Ensure all product IDs have entries
+  for (const id of productIds) {
+    if (!map.has(id)) map.set(id, []);
+  }
+  
+  return map;
+};
+
+/**
+ * Batch get images for multiple products
+ * Returns a Map of productId -> images[]
+ */
+export const batchGetProductImages = async (productIds: number[]): Promise<Map<number, ProductImageResponse[]>> => {
+  if (productIds.length === 0) return new Map();
+  
+  const result = await db
+    .select()
+    .from(productImages)
+    .where(inArray(productImages.productId, productIds))
+    .orderBy(asc(productImages.position));
+  
+  const map = new Map<number, ProductImageResponse[]>();
+  for (const img of result) {
+    const existing = map.get(img.productId) ?? [];
+    existing.push({
+      id: img.id,
+      productId: img.productId,
+      src: img.src,
+      name: img.name ?? '',
+      alt: img.alt ?? '',
+      position: img.position,
+      dateCreated: img.dateCreated,
+    });
+    map.set(img.productId, existing);
+  }
+  
+  // Ensure all product IDs have entries
+  for (const id of productIds) {
+    if (!map.has(id)) map.set(id, []);
+  }
+  
+  return map;
+};
+
+/**
+ * Batch get variation IDs for multiple products
+ * Returns a Map of productId -> variationIds[]
+ */
+export const batchGetProductVariationIds = async (productIds: number[]): Promise<Map<number, number[]>> => {
+  if (productIds.length === 0) return new Map();
+  
+  const result = await db
+    .select({ id: productVariations.id, parentId: productVariations.parentId })
+    .from(productVariations)
+    .where(inArray(productVariations.parentId, productIds));
+  
+  const map = new Map<number, number[]>();
+  for (const row of result) {
+    const existing = map.get(row.parentId) ?? [];
+    existing.push(row.id);
+    map.set(row.parentId, existing);
+  }
+  
+  // Ensure all product IDs have entries
+  for (const id of productIds) {
+    if (!map.has(id)) map.set(id, []);
+  }
+  
+  return map;
+};
+
+// ==================== SERVICE EXPORT ====================
+
 export const productService = {
   list: listProducts,
   get: getProduct,
@@ -390,6 +610,16 @@ export const productService = {
   batchCreate: batchCreateProducts,
   batchUpdate: batchUpdateProducts,
   batchDelete: batchDeleteProducts,
+  // Related data methods
+  getCategories: getProductCategories,
+  getTags: getProductTags,
+  getImages: getProductImages,
+  getVariationIds: getProductVariationIds,
+  // Batch related data
+  batchGetCategories: batchGetProductCategories,
+  batchGetTags: batchGetProductTags,
+  batchGetImages: batchGetProductImages,
+  batchGetVariationIds: batchGetProductVariationIds,
 };
 
 export default productService;

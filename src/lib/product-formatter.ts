@@ -259,9 +259,46 @@ export const formatProductResponse = (
 
 /**
  * Format multiple products for list response
+ * Uses batch-fetched related data to avoid N+1 queries
  */
 export const formatProductListResponse = (
-  products: Product[]
+  products: Product[],
+  options?: {
+    categoriesMap?: Map<number, CategoryResponse[]>;
+    tagsMap?: Map<number, TagResponse[]>;
+    imagesMap?: Map<number, ImageResponse[]>;
+    variationsMap?: Map<number, number[]>;
+  }
 ): ProductResponse[] => {
-  return products.map(product => formatProductResponse(product));
+  return products.map(product => {
+    const productId = product.id;
+    return formatProductResponse(product, {
+      categories: options?.categoriesMap?.get(productId) ?? [],
+      tags: options?.tagsMap?.get(productId) ?? [],
+      images: options?.imagesMap?.get(productId) ?? [],
+      variations: options?.variationsMap?.get(productId) ?? [],
+    });
+  });
 };
+
+/**
+ * Format product image for response
+ */
+export const formatProductImage = (img: {
+  id: number;
+  productId: number;
+  src: string;
+  name: string;
+  alt: string;
+  position: number;
+  dateCreated: Date | null;
+}): ImageResponse => ({
+  id: img.id,
+  date_created: formatDate(img.dateCreated),
+  date_created_gmt: formatDateGmt(img.dateCreated),
+  date_modified: null,
+  date_modified_gmt: null,
+  src: img.src,
+  name: img.name,
+  alt: img.alt,
+});

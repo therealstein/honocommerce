@@ -92,24 +92,57 @@ router.post('/batch', async (c) => {
     delete: [] as ReturnType<typeof formatOrderResponse>[],
   };
   
+  // Create orders with all related data
   if (create?.length) {
     for (const input of create) {
       const order = await orderService.create(input);
-      const lineItems = await orderService.getItems(order.id);
-      result.create.push(formatOrderResponse(order, { lineItems }));
+      // Fetch all 6 related data types
+      const [lineItems, shippingLines, taxLines, feeLines, couponLines, refunds] = await Promise.all([
+        orderService.getItems(order.id),
+        orderService.getShippingLines(order.id),
+        orderService.getTaxLines(order.id),
+        orderService.getFeeLines(order.id),
+        orderService.getCouponLines(order.id),
+        orderService.getRefunds(order.id),
+      ]);
+      result.create.push(formatOrderResponse(order, { 
+        lineItems, 
+        shippingLines, 
+        taxLines, 
+        feeLines, 
+        couponLines, 
+        refunds 
+      }));
     }
   }
   
+  // Update orders with all related data
   if (update?.length) {
     for (const input of update) {
       const order = await orderService.update(input.id, input);
       if (order) {
-        const lineItems = await orderService.getItems(order.id);
-        result.update.push(formatOrderResponse(order, { lineItems }));
+        // Fetch all 6 related data types
+        const [lineItems, shippingLines, taxLines, feeLines, couponLines, refunds] = await Promise.all([
+          orderService.getItems(order.id),
+          orderService.getShippingLines(order.id),
+          orderService.getTaxLines(order.id),
+          orderService.getFeeLines(order.id),
+          orderService.getCouponLines(order.id),
+          orderService.getRefunds(order.id),
+        ]);
+        result.update.push(formatOrderResponse(order, { 
+          lineItems, 
+          shippingLines, 
+          taxLines, 
+          feeLines, 
+          couponLines, 
+          refunds 
+        }));
       }
     }
   }
   
+  // Delete orders (no related data needed)
   if (deleteIds?.length) {
     for (const id of deleteIds) {
       const order = await orderService.delete(id);

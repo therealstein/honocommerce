@@ -14,7 +14,7 @@ const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
  * Rate limiter configuration
  */
 const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
-const RATE_LIMIT_MAX_REQUESTS = 100; // requests per window
+const RATE_LIMIT_MAX_REQUESTS = parseInt(process.env.RATE_LIMIT_MAX || '100', 10); // requests per window
 
 /**
  * Get client identifier (IP or API key)

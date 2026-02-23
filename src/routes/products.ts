@@ -33,6 +33,32 @@ router.get('/', async (c) => {
   const query = productListQuerySchema.parse(c.req.query());
   const result = await productService.list(query);
   
+  // Batch fetch related data (4 queries total, not N×4)
+  const productIds = result.items.map(p => p.id);
+  const [categoriesMap, tagsMap, imagesMap, variationsMap] = await Promise.all([
+    productService.batchGetCategories(productIds),
+    productService.batchGetTags(productIds),
+    productService.batchGetImages(productIds),
+    productService.batchGetVariationIds(productIds),
+  ]);
+  
+  // Convert images to response format
+  const formattedImagesMap = new Map(
+    productIds.map(id => [
+      id,
+      (imagesMap.get(id) ?? []).map(img => ({
+        id: img.id,
+        date_created: img.dateCreated ? img.dateCreated.toISOString().replace('T', ' ').slice(0, 19) : null,
+        date_created_gmt: img.dateCreated ? img.dateCreated.toISOString().slice(0, 19) + 'Z' : null,
+        date_modified: null,
+        date_modified_gmt: null,
+        src: img.src,
+        name: img.name,
+        alt: img.alt,
+      }))
+    ])
+  );
+  
   setPaginationHeaders(c, {
     total: result.total,
     totalPages: result.totalPages,
@@ -40,7 +66,12 @@ router.get('/', async (c) => {
     perPage: result.perPage,
   }, '/wp-json/wc/v3/products');
   
-  return c.json(formatProductListResponse(result.items));
+  return c.json(formatProductListResponse(result.items, {
+    categoriesMap,
+    tagsMap,
+    imagesMap: formattedImagesMap,
+    variationsMap,
+  }));
 });
 
 router.post('/', async (c) => {
@@ -61,7 +92,32 @@ router.post('/', async (c) => {
   }
   
   const product = await productService.create(parseResult.data);
-  return c.json(formatProductResponse(product), 201);
+  
+  // Fetch related data for response
+  const [categories, tags, images, variations] = await Promise.all([
+    productService.getCategories(product.id),
+    productService.getTags(product.id),
+    productService.getImages(product.id),
+    productService.getVariationIds(product.id),
+  ]);
+  
+  const formattedImages = images.map(img => ({
+    id: img.id,
+    date_created: img.dateCreated ? img.dateCreated.toISOString().replace('T', ' ').slice(0, 19) : null,
+    date_created_gmt: img.dateCreated ? img.dateCreated.toISOString().slice(0, 19) + 'Z' : null,
+    date_modified: null,
+    date_modified_gmt: null,
+    src: img.src,
+    name: img.name,
+    alt: img.alt,
+  }));
+  
+  return c.json(formatProductResponse(product, {
+    categories,
+    tags,
+    images: formattedImages,
+    variations,
+  }), 201);
 });
 
 router.post('/batch', async (c) => {
@@ -77,11 +133,78 @@ router.post('/batch', async (c) => {
   }
   
   const { create, update, delete: deleteIds } = parseResult.data;
-  const result = { create: [] as ReturnType<typeof formatProductResponse>[], update: [] as typeof formatProductResponse extends (...args: any[]) => infer R ? R[] : never, delete: [] as typeof formatProductResponse extends (...args: any[]) => infer R ? R[] : never };
+  const result = { 
+    create: [] as ReturnType<typeof formatProductResponse>[], 
+    update: [] as typeof formatProductResponse extends (...args: any[]) => infer R ? R[] : never, 
+    delete: [] as typeof formatProductResponse extends (...args: any[]) => infer R ? R[] : never 
+  };
   
-  if (create?.length) result.create = (await productService.batchCreate(create)).map(formatProductResponse);
-  if (update?.length) result.update = (await productService.batchUpdate(update)).filter((p): p is NonNullable<typeof p> => p !== null).map(formatProductResponse);
-  if (deleteIds?.length) result.delete = (await productService.batchDelete(deleteIds)).filter((p): p is NonNullable<typeof p> => p !== null).map(formatProductResponse);
+  // Create products
+  if (create?.length) {
+    const created = await productService.batchCreate(create);
+    const createdIds = created.map(p => p.id);
+    
+    // Batch fetch related data
+    const [categoriesMap, tagsMap, imagesMap, variationsMap] = await Promise.all([
+      productService.batchGetCategories(createdIds),
+      productService.batchGetTags(createdIds),
+      productService.batchGetImages(createdIds),
+      productService.batchGetVariationIds(createdIds),
+    ]);
+    
+    result.create = created.map(p => formatProductResponse(p, {
+      categories: categoriesMap.get(p.id) ?? [],
+      tags: tagsMap.get(p.id) ?? [],
+      images: (imagesMap.get(p.id) ?? []).map(img => ({
+        id: img.id,
+        date_created: img.dateCreated ? img.dateCreated.toISOString().replace('T', ' ').slice(0, 19) : null,
+        date_created_gmt: img.dateCreated ? img.dateCreated.toISOString().slice(0, 19) + 'Z' : null,
+        date_modified: null,
+        date_modified_gmt: null,
+        src: img.src,
+        name: img.name,
+        alt: img.alt,
+      })),
+      variations: variationsMap.get(p.id) ?? [],
+    }));
+  }
+  
+  // Update products
+  if (update?.length) {
+    const updated = (await productService.batchUpdate(update)).filter((p): p is NonNullable<typeof p> => p !== null);
+    const updatedIds = updated.map(p => p.id);
+    
+    // Batch fetch related data
+    const [categoriesMap, tagsMap, imagesMap, variationsMap] = await Promise.all([
+      productService.batchGetCategories(updatedIds),
+      productService.batchGetTags(updatedIds),
+      productService.batchGetImages(updatedIds),
+      productService.batchGetVariationIds(updatedIds),
+    ]);
+    
+    result.update = updated.map(p => formatProductResponse(p, {
+      categories: categoriesMap.get(p.id) ?? [],
+      tags: tagsMap.get(p.id) ?? [],
+      images: (imagesMap.get(p.id) ?? []).map(img => ({
+        id: img.id,
+        date_created: img.dateCreated ? img.dateCreated.toISOString().replace('T', ' ').slice(0, 19) : null,
+        date_created_gmt: img.dateCreated ? img.dateCreated.toISOString().slice(0, 19) + 'Z' : null,
+        date_modified: null,
+        date_modified_gmt: null,
+        src: img.src,
+        name: img.name,
+        alt: img.alt,
+      })),
+      variations: variationsMap.get(p.id) ?? [],
+    }));
+  }
+  
+  // Delete products
+  if (deleteIds?.length) {
+    result.delete = (await productService.batchDelete(deleteIds))
+      .filter((p): p is NonNullable<typeof p> => p !== null)
+      .map(p => formatProductResponse(p));
+  }
   
   return c.json(result);
 });
@@ -489,7 +612,31 @@ router.get('/:id', async (c) => {
   const product = await productService.get(id);
   if (!product) return c.json(wcError(WcErrorCodes.PRODUCT_INVALID_ID, 'Invalid product ID.', 404), 404);
   
-  return c.json(formatProductResponse(product));
+  // Fetch related data
+  const [categories, tags, images, variations] = await Promise.all([
+    productService.getCategories(id),
+    productService.getTags(id),
+    productService.getImages(id),
+    productService.getVariationIds(id),
+  ]);
+  
+  const formattedImages = images.map(img => ({
+    id: img.id,
+    date_created: img.dateCreated ? img.dateCreated.toISOString().replace('T', ' ').slice(0, 19) : null,
+    date_created_gmt: img.dateCreated ? img.dateCreated.toISOString().slice(0, 19) + 'Z' : null,
+    date_modified: null,
+    date_modified_gmt: null,
+    src: img.src,
+    name: img.name,
+    alt: img.alt,
+  }));
+  
+  return c.json(formatProductResponse(product, {
+    categories,
+    tags,
+    images: formattedImages,
+    variations,
+  }));
 });
 
 router.put('/:id', async (c) => {
@@ -510,7 +657,31 @@ router.put('/:id', async (c) => {
   const product = await productService.update(id, parseResult.data);
   if (!product) return c.json(wcError(WcErrorCodes.PRODUCT_INVALID_ID, 'Invalid product ID.', 404), 404);
   
-  return c.json(formatProductResponse(product));
+  // Fetch related data
+  const [categories, tags, images, variations] = await Promise.all([
+    productService.getCategories(id),
+    productService.getTags(id),
+    productService.getImages(id),
+    productService.getVariationIds(id),
+  ]);
+  
+  const formattedImages = images.map(img => ({
+    id: img.id,
+    date_created: img.dateCreated ? img.dateCreated.toISOString().replace('T', ' ').slice(0, 19) : null,
+    date_created_gmt: img.dateCreated ? img.dateCreated.toISOString().slice(0, 19) + 'Z' : null,
+    date_modified: null,
+    date_modified_gmt: null,
+    src: img.src,
+    name: img.name,
+    alt: img.alt,
+  }));
+  
+  return c.json(formatProductResponse(product, {
+    categories,
+    tags,
+    images: formattedImages,
+    variations,
+  }));
 });
 
 router.delete('/:id', async (c) => {
