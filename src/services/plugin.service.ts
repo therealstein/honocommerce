@@ -14,20 +14,152 @@ import type {
   PluginState,
   PluginStatus,
   PluginLogEntry,
+  PluginRoutes,
 } from '../types/plugin.types';
 import { hookManager, unregisterPluginHooks } from '../lib/hooks';
 import { schedulerManager, unregisterPluginSchedules } from '../lib/scheduler';
 import logger from '../lib/logger';
+import type { Hono } from 'hono';
+import { sql } from 'drizzle-orm';
+import * as fs from 'fs/promises';
+import * as path from 'path';
 
 // ============== PLUGIN REGISTRY ==============
 
 // In-memory plugin registry
 const pluginRegistry: Map<string, Plugin> = new Map();
 
+// Reference to Hono app for dynamic route mounting
+let honoApp: Hono | null = null;
+
+// Track mounted plugin routes for cleanup
+const mountedPluginRoutes: Map<string, Hono> = new Map();
+
+// Callback for registering routes with the main app
+let routeRegistrationCallback: ((basePath: string, router: Hono) => void) | null = null;
+let routeUnregistrationCallback: ((basePath: string) => void) | null = null;
+
 // ============== PLUGIN MANAGER ==============
 
 class PluginManager {
   private pluginsDir: string = './plugins';
+
+  /**
+   * Set the Hono app instance and route registration callbacks
+   */
+  setApp(
+    app: Hono,
+    onRegisterRoute: (basePath: string, router: Hono) => void,
+    onUnregisterRoute: (basePath: string) => void
+  ): void {
+    honoApp = app;
+    routeRegistrationCallback = onRegisterRoute;
+    routeUnregistrationCallback = onUnregisterRoute;
+    logger.debug('Hono app reference set for plugin system');
+  }
+
+  /**
+   * Execute a SQL migration file
+   */
+  private async executeMigration(
+    pluginId: string,
+    migrationPath: string
+  ): Promise<void> {
+    const fullPath = path.join(this.pluginsDir, pluginId, migrationPath);
+
+    try {
+      const migrationSql = await fs.readFile(fullPath, 'utf-8');
+
+      // Execute the SQL
+      await db.execute(sql.raw(migrationSql));
+
+      logger.info('Migration executed', { pluginId, migration: migrationPath });
+    } catch (error) {
+      logger.error('Migration failed', {
+        pluginId,
+        migration: migrationPath,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+      throw new Error(`Migration failed: ${migrationPath} - ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Execute uninstall SQL statements
+   */
+  private async executeUninstallSql(
+    pluginId: string,
+    sqlStatements: string[]
+  ): Promise<void> {
+    for (const statement of sqlStatements) {
+      try {
+        await db.execute(sql.raw(statement));
+        logger.debug('Uninstall SQL executed', { pluginId, sql: statement.substring(0, 50) + '...' });
+      } catch (error) {
+        logger.warn('Uninstall SQL failed (continuing)', {
+          pluginId,
+          sql: statement.substring(0, 50) + '...',
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+        // Continue with other statements even if one fails
+      }
+    }
+  }
+
+  /**
+   * Register plugin routes with the Hono app
+   */
+  private registerRoutes(pluginId: string, routes: PluginRoutes): void {
+    if (!honoApp || !routeRegistrationCallback) {
+      logger.warn('Cannot register routes: Hono app not set', { pluginId });
+      return;
+    }
+
+    // Create a sub-router for the plugin
+    const router = new Hono();
+
+    for (const route of routes.routes) {
+      const middleware = route.middleware ?? [];
+
+      switch (route.method) {
+        case 'GET':
+          router.get(route.path, ...middleware, route.handler as (c: unknown) => Promise<unknown>);
+          break;
+        case 'POST':
+          router.post(route.path, ...middleware, route.handler as (c: unknown) => Promise<unknown>);
+          break;
+        case 'PUT':
+          router.put(route.path, ...middleware, route.handler as (c: unknown) => Promise<unknown>);
+          break;
+        case 'DELETE':
+          router.delete(route.path, ...middleware, route.handler as (c: unknown) => Promise<unknown>);
+          break;
+        case 'PATCH':
+          router.patch(route.path, ...middleware, route.handler as (c: unknown) => Promise<unknown>);
+          break;
+      }
+    }
+
+    // Store reference for cleanup
+    mountedPluginRoutes.set(pluginId, router);
+
+    // Register with main app via callback
+    routeRegistrationCallback(routes.basePath, router);
+
+    logger.info('Plugin routes registered', { pluginId, basePath: routes.basePath, routeCount: routes.routes.length });
+  }
+
+  /**
+   * Unregister plugin routes
+   */
+  private unregisterRoutes(pluginId: string, basePath: string): void {
+    if (routeUnregistrationCallback) {
+      routeUnregistrationCallback(basePath);
+    }
+
+    mountedPluginRoutes.delete(pluginId);
+    logger.info('Plugin routes unregistered', { pluginId, basePath });
+  }
 
   /**
    * Initialize the plugin system
@@ -95,19 +227,31 @@ class PluginManager {
   async installPlugin(plugin: Plugin): Promise<PluginState> {
     const manifest = plugin.manifest;
     const pluginId = manifest.id;
-    
+
     // Check if already installed
     const existing = await this.getPluginState(pluginId);
     if (existing) {
       throw new Error(`Plugin ${pluginId} is already installed`);
     }
-    
+
     // Register plugin in memory
     this.registerPlugin(plugin);
-    
+
+    // Run migrations if defined
+    if (manifest.migrations?.length) {
+      try {
+        for (const migration of manifest.migrations) {
+          await this.executeMigration(pluginId, migration);
+        }
+      } catch (error) {
+        this.unregisterPlugin(pluginId);
+        throw error;
+      }
+    }
+
     // Create context
     const context = this.createPluginContext(pluginId);
-    
+
     // Run install hook
     if (plugin.install) {
       try {
@@ -190,7 +334,12 @@ class PluginManager {
           }
         }
       }
-      
+
+      // Register routes if defined
+      if (plugin.routes) {
+        this.registerRoutes(pluginId, plugin.routes);
+      }
+
       // Update status
       const now = new Date();
       await db
@@ -247,10 +396,16 @@ class PluginManager {
       
       // Unregister hooks
       unregisterPluginHooks(pluginId);
-      
+
       // Unregister schedules
       await unregisterPluginSchedules(pluginId);
-      
+
+      // Unregister routes if registered
+      const plugin = pluginRegistry.get(pluginId);
+      if (plugin?.routes) {
+        this.unregisterRoutes(pluginId, plugin.routes.basePath);
+      }
+
       // Update status
       const now = new Date();
       await db
@@ -285,33 +440,38 @@ class PluginManager {
   async uninstallPlugin(pluginId: string): Promise<void> {
     const plugin = pluginRegistry.get(pluginId);
     const state = await this.getPluginState(pluginId);
-    
+
     if (!state) {
       throw new Error(`Plugin ${pluginId} is not installed`);
     }
-    
+
     // Deactivate first if active
     if (state.status === 'active') {
       await this.deactivatePlugin(pluginId);
     }
-    
+
     const context = this.createPluginContext(pluginId);
-    
+
     try {
       // Run uninstall hook
       if (plugin?.uninstall) {
         await plugin.uninstall(context);
       }
-      
+
+      // Run uninstall SQL if defined (drops tables, etc.)
+      if (plugin?.manifest.uninstallSql?.length) {
+        await this.executeUninstallSql(pluginId, plugin.manifest.uninstallSql);
+      }
+
       // Unregister from memory
       this.unregisterPlugin(pluginId);
-      
+
       // Remove from database
       await db.delete(plugins).where(eq(plugins.id, pluginId));
       await db.delete(pluginSettings).where(eq(pluginSettings.pluginId, pluginId));
-      
+
       logger.info('Plugin uninstalled', { pluginId });
-      
+
     } catch (error) {
       throw new Error(`Failed to uninstall plugin ${pluginId}: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
@@ -579,5 +739,15 @@ export const uninstallPlugin = (pluginId: string): Promise<void> => pluginManage
 export const listPlugins = (): Promise<PluginState[]> => pluginManager.listPlugins();
 export const getPluginState = (pluginId: string): Promise<PluginState | null> => pluginManager.getPluginState(pluginId);
 export const getPluginConfig = (pluginId: string): Promise<Record<string, unknown>> => pluginManager.getPluginConfig(pluginId);
-export const updatePluginConfig = (pluginId: string, config: Record<string, unknown>): Promise<void> => 
+export const updatePluginConfig = (pluginId: string, config: Record<string, unknown>): Promise<void> =>
   pluginManager.updatePluginConfig(pluginId, config);
+
+/**
+ * Set the Hono app instance for plugin route registration
+ * Must be called before activating plugins with routes
+ */
+export const setPluginApp = (
+  app: Hono,
+  onRegisterRoute: (basePath: string, router: Hono) => void,
+  onUnregisterRoute: (basePath: string) => void
+): void => pluginManager.setApp(app, onRegisterRoute, onUnregisterRoute);

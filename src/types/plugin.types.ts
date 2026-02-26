@@ -36,6 +36,16 @@ export interface PluginManifest {
   hooks?: string[];
   /** Scheduled tasks */
   schedules?: PluginSchedule[];
+  /**
+   * Database migrations to run during install
+   * Paths are relative to plugin directory
+   */
+  migrations?: string[];
+  /**
+   * SQL statements to run during uninstall (cleanup)
+   * Use with caution - typically just DROP TABLE statements
+   */
+  uninstallSql?: string[];
 }
 
 export interface PluginDependency {
@@ -52,6 +62,34 @@ export interface PluginSchedule {
   schedule: string;
   /** Description of what this schedule does */
   description?: string;
+}
+
+// ============== PLUGIN ROUTES ==============
+
+/**
+ * Plugin Route Definition
+ * Allows plugins to register their own REST endpoints
+ */
+export interface PluginRoute {
+  /** HTTP method */
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+  /** Route path (will be mounted under /wp-json/wc/v3/{basePath}) */
+  path: string;
+  /** Route handler function */
+  handler: (c: unknown) => Promise<unknown>;
+  /** Optional middleware to apply before handler */
+  middleware?: Array<(c: unknown, next: () => Promise<unknown>) => Promise<unknown>>;
+}
+
+/**
+ * Plugin Routes Configuration
+ * Defines a collection of routes with a base path
+ */
+export interface PluginRoutes {
+  /** Base path for all routes (e.g., 'subscriptions') */
+  basePath: string;
+  /** Route definitions */
+  routes: PluginRoute[];
 }
 
 // ============== PLUGIN LIFECYCLE ==============
@@ -71,6 +109,8 @@ export interface Plugin {
   hooks?: PluginHooks;
   /** Scheduled task handlers */
   schedules?: PluginScheduleHandlers;
+  /** Routes to register when plugin is active */
+  routes?: PluginRoutes;
 }
 
 export interface PluginContext {

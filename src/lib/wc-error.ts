@@ -41,6 +41,9 @@ export const WcErrorCodes = {
   // Coupon errors
   COUPON_INVALID_ID: 'woocommerce_rest_coupon_invalid_id',
   
+  // Subscription errors
+  SUBSCRIPTION_INVALID_ID: 'woocommerce_rest_subscription_invalid_id',
+  
   // General errors
   INVALID_PARAM: 'woocommerce_rest_invalid_param',
   MISSING_PARAM: 'woocommerce_rest_missing_param',

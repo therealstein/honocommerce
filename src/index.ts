@@ -28,13 +28,14 @@ import paymentGatewaysRouter from './routes/payment-gateways';
 import dataRouter from './routes/data';
 import pluginsRouter from './routes/plugins';
 import adminRouter from './routes/admin';
+// Note: subscriptions routes are now a plugin - see plugins/subscriptions/
 
 // Import queue system
 import { initializeQueues, isQueueEnabled, getQueueStats, shutdownQueues } from './queue';
 import { startAllWorkers, stopAllWorkers } from './queue/workers';
 
 // Import plugin system
-import { initializePluginSystem, shutdownPluginSystem } from './services/plugin.service';
+import { initializePluginSystem, shutdownPluginSystem, setPluginApp } from './services/plugin.service';
 
 // Import better-auth
 import { auth } from './lib/auth';
@@ -132,9 +133,35 @@ api.route('/taxes', taxesRouter);
 api.route('/payment-gateways', paymentGatewaysRouter);
 api.route('/data', dataRouter);
 api.route('/plugins', pluginsRouter);
+// Note: subscriptions routes are registered dynamically via plugins
 
 // Mount API at WooCommerce-compatible path
 app.route('/wp-json/wc/v3', api);
+
+// Plugin route registry - for dynamic route mounting
+const pluginRoutes: Map<string, Hono> = new Map();
+
+/**
+ * Register a plugin's routes with the API
+ * Called by the plugin manager when a plugin is activated
+ */
+const registerPluginRoute = (basePath: string, router: Hono): void => {
+  pluginRoutes.set(basePath, router);
+  api.route(`/${basePath}`, router);
+  logger.info('Plugin routes mounted', { basePath });
+};
+
+/**
+ * Unregister a plugin's routes from the API
+ * Note: Hono doesn't support unmounting routes, but we track them for reference
+ */
+const unregisterPluginRoute = (basePath: string): void => {
+  pluginRoutes.delete(basePath);
+  logger.info('Plugin routes unmounted (tracked)', { basePath });
+};
+
+// Set up plugin system for dynamic route mounting
+setPluginApp(app, registerPluginRoute, unregisterPluginRoute);
 
 // ============== SERVER STARTUP ==============
 
